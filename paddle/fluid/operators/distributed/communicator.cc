@@ -213,7 +213,7 @@ void AsyncCommunicator::SendThread() {
           auto send_functor = distributed::ParameterSend<float>();
           auto &ctx = send_varname_to_ctx_.at(var_name);
           if (!FLAGS_communicator_fake_rpc) {
-            send_functor(ctx, *send_scope_, true, 1);
+            send_functor(ctx, *send_scope_, true);
           }
           auto after_send = GetCurrentUS();
           VLOG(3) << "send " << var_name << " use time "
@@ -263,7 +263,7 @@ void AsyncCommunicator::Send(const std::string &var_name,
     auto send_functor = distributed::ParameterSend<float>();
     auto &ctx = send_varname_to_ctx_.at(var_name);
     if (!FLAGS_communicator_fake_rpc) {
-      send_functor(ctx, scope, true, 1);
+      send_functor(ctx, scope, true);
     }
   } else {
     auto tmp_grad_var = std::make_shared<Variable>();
@@ -690,7 +690,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(const std::string &var_name) {
   auto &ctx = send_varname_to_ctx_.at(var_name);
 
   auto before_send_dense = GetCurrentUS();
-  send_functor(ctx, *delta_scope_.get(), true, 1);
+  send_functor(ctx, *delta_scope_.get(), true);
   auto after_send_denxe = GetCurrentUS();
   VLOG(3) << "send " << var_name << " use time "
           << after_send_denxe - before_send_dense;
