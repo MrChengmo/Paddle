@@ -166,7 +166,19 @@ class GeoSgdTranspiler(DistributeTranspiler):
                         self.sparse_tables.append(sparse_var_name)
                         unique_sparse_var[input_var_name] = sparse_var_name
 
-            # designed for pyramiddnn embedding
+            # designed for pyramiddnn embedding PyramidHash_emb_
+            elif op.type == "pyramid_hash":
+                for input_var_name, sparse_var_name in zip(
+                        op.output("Ids"), op.input("W")):
+                    if sparse_var_name in self.sparse_var_list:
+                        if input_var_name in unique_sparse_var:
+                            if unique_sparse_var[
+                                    input_var_name] == sparse_var_name:
+                                continue
+                        input_var = program.global_block().var(input_var_name)
+                        self.sparse_var.append(input_var)
+                        self.sparse_tables.append(sparse_var_name)
+                        unique_sparse_var[input_var_name] = sparse_var_name
 
             # batch training loop end flag
         dummy_output = program.global_block().create_var(
@@ -293,6 +305,9 @@ class GeoSgdTranspiler(DistributeTranspiler):
                 grad_list.append(g)
                 param_grad_set.add(g.name)
             if g.type == core.VarDesc.VarType.SELECTED_ROWS:
+                self.sparse_var_list.append(p.name)
+            # Todo: Need add pyramid hash embedding as sparse var by simple method
+            if "PyramidHash_emb_0" in g.name:
                 self.sparse_var_list.append(p.name)
 
         # step 2. Slice vars into numbers of piece with block_size

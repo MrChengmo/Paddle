@@ -2546,6 +2546,7 @@ class DistributeTranspiler(object):
             if special_attr in op.all_attrs():
                 for param_name in op.attr("distribute_update_vars"):
                     params.append(origin_var_dict[param_name])
+
         unique_params = list(set(params))
         params_grads = []
         for var in unique_params:
