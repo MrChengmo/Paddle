@@ -311,7 +311,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       }
       if (w >= 2) {
         for (int ilayer = 1; ilayer < _pyramid_layer && ilayer < w; ++ilayer) {
-          for (int l = 0; l < w - / ; ++l) {
+          for (int l = 0; l < w - ilayer; ++l) {
             if (*(iter++) == 0) {
               // do nothing
             } else {
