@@ -166,7 +166,9 @@ class GeoSgdTranspiler(DistributeTranspiler):
                         self.sparse_tables.append(sparse_var_name)
                         unique_sparse_var[input_var_name] = sparse_var_name
 
-        # batch training loop end flag
+            # designed for pyramiddnn embedding
+
+            # batch training loop end flag
         dummy_output = program.global_block().create_var(
             name=framework.generate_control_dev_var_name())
         program.global_block().append_op(

@@ -59,14 +59,16 @@ class PyramidHashOpMaker : public framework::OpProtoAndCheckerMaker {
         .EqualGreaterThan(0);
     AddAttr<int>("seed", "seed").SetDefault(0).EqualGreaterThan(0);
     AddAttr<float>("lr", "learning rate").SetDefault(0.0).EqualGreaterThan(0.0);
+    AddOutput("Out", "Out (Tensor, default Tensor<float>) Output variable");
+    AddOutput("DropPos", "Out (Tensor, Tensor<int>) Output variable");
+    AddOutput("X_Temp_Out", "Out (Tensor, Tensor<int>) Output variable")
+        .AsIntermediate();
     AddAttr<std::vector<std::string>>(
         "distribute_update_vars",
         "['PyramidHash_emb_0','Filter']"
         "Decided which params should be update in distribute training. Used in "
         "Distribute Transpiler to create trainer/pserver program.");
-    AddOutput("Out", "Out (Tensor, default Tensor<float>) Output variable");
-    AddOutput("DropPos", "Out (Tensor, Tensor<int>) Output variable");
-    AddOutput("X_Temp_Out", "Out (Tensor, Tensor<int>) Output variable")
+    AddOutput("Ids", "Out (Tensor, Tensor<int>) pyramid hash embedding pos ids")
         .AsIntermediate();
 
     AddComment(R"DOC(
@@ -164,7 +166,8 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
 
   void hash_embedding_ff(const T* hash_id, int len, T* top_pos,
                          const T* weights, int _num_emb, int _rand_len,
-                         int _space_len) const {
+                         int _space_len,
+                         std::vector<unsigned int>* ids_vec) const {
     for (unsigned int j = 0; j != _num_emb; j += _rand_len) {
       unsigned int pos = XXH32(hash_id, len * sizeof(T), j) % _space_len;
       if (_rand_len == 16) {
@@ -172,6 +175,9 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       } else {
         memcpy(top_pos + j, const_cast<float*>(weights + pos),
                _rand_len * sizeof(T));
+      }
+      for (int k = 0; k < _rand_len; ++k) {
+        &ids_vec.push_back(pos + k);
       }
     }
   }
@@ -268,6 +274,13 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
 
     int top_l = top_offset[top_offset.size() - 1];
 
+    // for distribute communicaton
+    auto* ids_buff = ctx.Output<Tensor>("Ids");
+    ids_buff->Resize(framework::make_ddim({top_l * _num_emb, 1}));
+    int* ids_data = ids_buff->mutable_data<int>(ctx.GetPlace());
+    std::vector<unsigned int> ids_vec;
+    ids_vec.reserve(top_l * _num_emb);
+
     framework::LoD top_lod;
     top_lod.push_back(top_offset);
     top->set_lod(top_lod);
@@ -298,14 +311,14 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       }
       if (w >= 2) {
         for (int ilayer = 1; ilayer < _pyramid_layer && ilayer < w; ++ilayer) {
-          for (int l = 0; l < w - ilayer; ++l) {
+          for (int l = 0; l < w - / ; ++l) {
             if (*(iter++) == 0) {
               // do nothing
             } else {
               auto* top_pos = top_data + top_counter++ * _num_emb;
               hash_embedding_ff((const T*)(bottom_data + offset[i] + l),
                                 ilayer + 1, top_pos, weights, _num_emb,
-                                _rand_len, _space_len);
+                                _rand_len, _space_len, &ids_vec);
             }
           }
         }
@@ -318,6 +331,9 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       avx_axpy_noadd(top_data, top_data, top->dims()[0] * top->dims()[1],
                      _drop_out_percent);
     }
+
+    // copy ids_vec to tensor:ids_data
+    memcpy(ids_data, &ids_vec[0], ids_vec.size() * sizeof(unsigned int));
   }
 };
 
