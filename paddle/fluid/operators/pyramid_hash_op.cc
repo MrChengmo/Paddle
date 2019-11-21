@@ -177,7 +177,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
                _rand_len * sizeof(T));
       }
       for (int k = 0; k < _rand_len; ++k) {
-        &ids_vec.push_back(pos + k);
+        ids_vec->push_back(pos + k);
       }
     }
   }
