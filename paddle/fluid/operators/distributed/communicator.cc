@@ -223,14 +223,14 @@ void AsyncCommunicator::SendThread() {
                                ctx.merge_add);
           }
           auto after_merge = GetCurrentUS();
-          VLOG(3) << "merge " << merged_var_num << " " << var_name
+          VLOG(1) << "merge " << merged_var_num << " " << var_name
                   << " use time " << after_merge - before_merge;
           auto send_functor = distributed::ParameterSend<float>();
           if (!FLAGS_communicator_fake_rpc) {
             send_functor(ctx, *send_scope_, true, 1);
           }
           auto after_send = GetCurrentUS();
-          VLOG(3) << "send " << var_name << " use time "
+          VLOG(1) << "send " << var_name << " use time "
                   << after_send - after_merge;
         };
         task_futures.emplace_back(
@@ -244,7 +244,7 @@ void AsyncCommunicator::SendThread() {
     }
     auto after_run_send_graph = GetCurrentUS();
 
-    VLOG(3) << "run send graph use time "
+    VLOG(1) << "run send graph use time "
             << after_run_send_graph - before_run_send_graph;
     Recv();
   }
@@ -548,7 +548,7 @@ void GeoSgdCommunicator::Send(const std::vector<std::string> &sparse_var_names,
   }
   need_push_queue_->Push(ids_table);
   auto after_run_send = GetCurrentUS();
-  VLOG(3) << "run send_op use time " << after_run_send - before_run_send;
+  VLOG(1) << "run send_op use time " << after_run_send - before_run_send;
 }
 
 void GeoSgdCommunicator::SendThread() {
@@ -579,7 +579,7 @@ void GeoSgdCommunicator::SendThread() {
 
     if (ids_send_vec_.size() >= geo_need_push_nums_) {
       auto after_run_training = GetCurrentUS();
-      VLOG(3) << "run Training use time "
+      VLOG(1) << "run Training use time "
               << after_run_training - before_run_training;
       before_run_training = GetCurrentUS();
       VLOG(3) << "Start send after get need_push_num";
@@ -608,7 +608,7 @@ void GeoSgdCommunicator::SendThread() {
             SendUpdateDenseVars(var_name);
             RecvUpdateDenseVars(var_name);
             auto after_run_geo = GetCurrentUS();
-            VLOG(3) << "run GEO-SGD var " << var_name << " use time "
+            VLOG(1) << "run GEO-SGD var " << var_name << " use time "
                     << after_run_geo - before_run_geo;
           };
           task_futures.emplace_back(
@@ -640,7 +640,7 @@ std::unordered_set<int64_t> GeoSgdCommunicator::SparseIdsMerge(
     }
   }
   auto after_run_ids_merge_ = GetCurrentUS();
-  VLOG(3) << "run SparseIdsMerge " << splited_var_name << " has nums "
+  VLOG(1) << "run SparseIdsMerge " << splited_var_name << " has nums "
           << ids_set.size() << " use time "
           << after_run_ids_merge_ - before_run_ids_merge_;
   return ids_set;
@@ -697,7 +697,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(const std::string &var_name) {
             var_y_tensor.mutable_data<float>(var_y_tensor.place()));
 
   auto after_run_send_dense = GetCurrentUS();
-  VLOG(3) << "run send update dense var " << var_name << " use time "
+  VLOG(1) << "run send update dense var " << var_name << " use time "
           << after_run_send_dense - before_run_send_dense;
 
   auto send_functor = distributed::ParameterSend<float>();
@@ -706,7 +706,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(const std::string &var_name) {
   auto before_send_dense = GetCurrentUS();
   send_functor(ctx, *delta_scope_.get(), true, 1);
   auto after_send_denxe = GetCurrentUS();
-  VLOG(3) << "send " << var_name << " use time "
+  VLOG(1) << "send " << var_name << " use time "
           << after_send_denxe - before_send_dense;
 }
 
@@ -762,7 +762,7 @@ void GeoSgdCommunicator::SendUpdateSparseVars(
   }
 
   auto after_run_send_sparse = GetCurrentUS();
-  VLOG(3) << "run send update sparse var " << splited_var_name << " use time "
+  VLOG(1) << "run send update sparse var " << splited_var_name << " use time "
           << after_run_send_sparse - before_run_send_sparse;
 
   auto splited_var_index = GetSplitedVarIndex(var_name, splited_var_name);
@@ -779,7 +779,7 @@ void GeoSgdCommunicator::SendUpdateSparseVars(
   auto before_send_sparse = GetCurrentUS();
   RpcSend(var_name, splited_var_name, splited_var_index);
   auto after_send_sparse = GetCurrentUS();
-  VLOG(3) << "send " << splited_var_name << " has nums " << new_rows.size()
+  VLOG(1) << "send " << splited_var_name << " has nums " << new_rows.size()
           << " use time " << after_send_sparse - before_send_sparse;
 }
 
@@ -795,7 +795,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(const std::string &var_name) {
   auto recv_functor = distributed::ParameterRecv<float>();
   recv_functor(recv_varname_to_ctx_[origin_var_name], *pserver_scope_.get());
   auto after_run_recv = GetCurrentUS();
-  VLOG(3) << "recv var " << origin_var_name << " use time "
+  VLOG(1) << "recv var " << origin_var_name << " use time "
           << after_run_recv - before_run_recv;
 
   // step2: update dense var
@@ -830,7 +830,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(const std::string &var_name) {
   // calc old = pserver
   framework::CopyVariable(*var_z, var_y);
   auto after_run_update = GetCurrentUS();
-  VLOG(3) << "dese var update " << origin_var_name << " use time "
+  VLOG(1) << "dese var update " << origin_var_name << " use time "
           << after_run_update - before_run_update;
 }
 
@@ -844,7 +844,7 @@ void GeoSgdCommunicator::RecvUpdateSparseVars(
   auto before_run_recv = GetCurrentUS();
   RpcRecv(origin_var_name, origin_splited_var_name, splited_var_index);
   auto after_run_recv = GetCurrentUS();
-  VLOG(3) << "recv var " << origin_splited_var_name << " use time "
+  VLOG(1) << "recv var " << origin_splited_var_name << " use time "
           << after_run_recv - before_run_recv;
 
   // step 2: update sparse var
@@ -891,7 +891,7 @@ void GeoSgdCommunicator::RecvUpdateSparseVars(
   }
 
   auto after_run_update = GetCurrentUS();
-  VLOG(3) << "sparse var recv update " << origin_splited_var_name << " has num "
+  VLOG(1) << "sparse var recv update " << origin_splited_var_name << " has num "
           << new_rows.size() << " use time "
           << after_run_update - before_run_update;
 }
