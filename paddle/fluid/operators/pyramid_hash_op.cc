@@ -169,7 +169,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
                          const T* weights, int _num_emb, int _rand_len,
                          int _space_len, int* ids_vec, int* ids_iter) const {
     unsigned int pos1 = XXH32(hash_id, len * sizeof(T), 0) % _space_len;
-    ids_vec[*(ids_iter++)] = pos1;
+    ids_vec[(*ids_iter)++] = pos1;
     VLOG(1) << "ids_vec " << *(ids_iter)-1 << " push value " << pos1;
     unsigned int pos2 = XXH32(hash_id, len * sizeof(T), _rand_len) % _space_len;
 
@@ -184,7 +184,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       memcpy(top_pos + j, const_cast<float*>(weights + pos1),
              _rand_len * sizeof(T));
       pos1 = pos2;
-      ids_vec[*(ids_iter++)] = pos1;
+      ids_vec[(*ids_iter)++] = pos1;
       VLOG(1) << "ids_vec " << *(ids_iter)-1 << " push value " << pos1;
       pos2 = pos3;
     }
@@ -298,6 +298,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
     int useful_word_nums = std::count(iter, iter_end, 1);
     ids_buff->Resize(
         framework::make_ddim({useful_word_nums * (_num_emb / _rand_len), 1}));
+    VLOG(1) << "ids_vec size: " << useful_word_nums * (_num_emb / _rand_len);
     int* ids_vec = ids_buff->mutable_data<int>(ctx.GetPlace());
     int ids_iter = 0;
 
