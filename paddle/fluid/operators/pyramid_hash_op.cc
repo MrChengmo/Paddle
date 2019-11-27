@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
+#include <gflags/gflags.h>
 #include <xxhash.h>
 #include <algorithm>
 #include <cmath>
@@ -67,6 +68,8 @@ class PyramidHashOpMaker : public framework::OpProtoAndCheckerMaker {
     AddOutput("Out", "Out (Tensor, default Tensor<float>) Output variable");
     AddOutput("DropPos", "Out (Tensor, Tensor<int>) Output variable");
     AddOutput("X_Temp_Out", "Out (Tensor, Tensor<int>) Output variable")
+        .AsIntermediate();
+    AddOutput("Ids", "Out (Tensor, Tensor<int>) pyramid hash embedding pos ids")
         .AsIntermediate();
 
     AddComment(R"DOC(
@@ -164,8 +167,10 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
 
   void hash_embedding_ff(const T* hash_id, int len, T* top_pos,
                          const T* weights, int _num_emb, int _rand_len,
-                         int _space_len) const {
+                         int _space_len, int* ids_vec, int* ids_iter) const {
     unsigned int pos1 = XXH32(hash_id, len * sizeof(T), 0) % _space_len;
+    ids_vec[*(ids_iter++)] = pos1;
+    VLOG(1) << "ids_vec " << *(ids_iter)-1 << " push value " << pos1;
     unsigned int pos2 = XXH32(hash_id, len * sizeof(T), _rand_len) % _space_len;
 
     for (unsigned int j = 0; j != _num_emb; j += _rand_len) {
@@ -179,6 +184,8 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
       memcpy(top_pos + j, const_cast<float*>(weights + pos1),
              _rand_len * sizeof(T));
       pos1 = pos2;
+      ids_vec[*(ids_iter++)] = pos1;
+      VLOG(1) << "ids_vec " << *(ids_iter)-1 << " push value " << pos1;
       pos2 = pos3;
     }
   }
@@ -286,6 +293,14 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
     drop_pos->set_lod(drop_pos_lod);
 
     iter = drop_pos->mutable_data<int>(ctx.GetPlace());
+    // for distribute communicaton
+    auto* ids_buff = ctx.Output<Tensor>("Ids");
+    int useful_word_nums = std::count(iter, iter_end, 1);
+    ids_buff->Resize(
+        framework::make_ddim({useful_word_nums * (_num_emb / _rand_len), 1}));
+    int* ids_vec = ids_buff->mutable_data<int>(ctx.GetPlace());
+    int ids_iter = 0;
+
     int top_counter = 0;
     for (int i = 0; i < offset.size() - 1; ++i) {
       int w_drop = drop_pos_offset[i + 1] - drop_pos_offset[i];
@@ -312,7 +327,7 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
               auto* top_pos = top_data + top_counter++ * _num_emb;
               hash_embedding_ff((const T*)(bottom_data + offset[i] + l),
                                 ilayer + 1, top_pos, weights, _num_emb,
-                                _rand_len, _space_len);
+                                _rand_len, _space_len, ids_vec, &ids_iter);
             }
           }
         }
@@ -324,6 +339,9 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
     if (_is_training == 0) {
       avx_axpy_noadd(top_data, top_data, top->dims()[0] * top->dims()[1],
                      _drop_out_percent);
+    }
+    for (int i = 0; i < useful_word_nums * (_num_emb / _rand_len); i++) {
+      VLOG(1) << "ids_vec " << i << " value is " << ids_vec[i];
     }
   }
 };
