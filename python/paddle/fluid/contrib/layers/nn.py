@@ -718,12 +718,16 @@ def search_pyramid_hash(input,
     res = helper.create_variable_for_type_inference(dtype)
     drop_pos = helper.create_variable_for_type_inference(dtype)
     x_temp_out = helper.create_variable_for_type_inference(dtype)
+    ids = helper.create_variable_for_type_inference(dtype)
     helper.append_op(
         type='pyramid_hash',
         inputs=input_vars,
-        outputs={"Out": res,
-                 "X_Temp_Out": x_temp_out,
-                 'DropPos': drop_pos},
+        outputs={
+            "Out": res,
+            "X_Temp_Out": x_temp_out,
+            'DropPos': drop_pos,
+            'Ids': ids
+        },
         attrs={
             'num_emb': num_emb,
             'space_len': space_len,
