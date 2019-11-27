@@ -177,7 +177,6 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
         __builtin_prefetch(top_pos + j + _rand_len);
       }
       ids_vec[(*ids_iter)++] = pos1;
-      VLOG(1) << "ids_vec " << *(ids_iter)-1 << " push value " << pos1;
       unsigned int pos3 =
           XXH32(hash_id, len * sizeof(T), j + 2 * _rand_len) % _space_len;
       memcpy(top_pos + j, const_cast<float*>(weights + pos1),
@@ -337,9 +336,6 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
     if (_is_training == 0) {
       avx_axpy_noadd(top_data, top_data, top->dims()[0] * top->dims()[1],
                      _drop_out_percent);
-    }
-    for (int i = 0; i < useful_word_nums * (_num_emb / _rand_len); i++) {
-      VLOG(1) << "ids_vec " << i << " value is " << ids_vec[i];
     }
   }
 };
