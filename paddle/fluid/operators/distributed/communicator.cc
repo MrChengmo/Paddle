@@ -558,7 +558,7 @@ void GeoSgdCommunicator::SendThread() {
     while (need_push_nums < geo_need_push_nums_) {
       if (need_push_queue_->Size() > 0) {
         wait_times = 0;
-        SparseIdsMerge(*(need_push_queue_->Pop()));
+        SparseIdsMerge(need_push_queue_->Pop()->get());
       } else if (need_push_queue_->Size() == 0) {
         VLOG(3) << "wait_times -> " << wait_times;
         if (wait_times >= FLAGS_communicator_send_wait_times) {
@@ -618,9 +618,9 @@ void GeoSgdCommunicator::SendThread() {
   }
 }
 
-void GeoSgdCommunicator::SparseIdsMerge(const SparseIdsVec &ids_send_vec) {
+void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
   auto before_run_ids_merge_ = GetCurrentUS();
-  for (auto &sparse_table : ids_send_vec) {
+  for (auto &sparse_table : *ids_send_vec) {
     std::string &sparse_table_name = sparse_table.first;
     for (auto sparse_var : sparse_table.second) {
       for (size_t i = 0; i < sparse_var.size(); i++) {
