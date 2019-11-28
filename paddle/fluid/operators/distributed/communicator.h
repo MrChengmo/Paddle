@@ -281,7 +281,8 @@ class Communicator {
 
 using SparseIdsMap =
     std::unordered_map<std::string, std::vector<std::unordered_set<int64_t>>>;
-
+using SparseIdsVec =
+    std::unoredered_map<std::string, std::vector<std::vector<int64_t>>>;
 class AsyncCommunicator : public Communicator {
  public:
   AsyncCommunicator() {}
@@ -360,9 +361,7 @@ class GeoSgdCommunicator : public Communicator {
 
  private:
   void SendThread();
-  std::unordered_set<int64_t> SparseIdsMerge(
-      const std::vector<SparseIdsMap>& ids_send_vec,
-      const std::string& var_name, const std::string& splited_var_name);
+  void SparseIdsMerge(const SparseIdsVec& ids_send_vec);
 
   void SendUpdateDenseVars(const std::string& var_name);
   void SendUpdateSparseVars(const std::string& var_name,
@@ -427,12 +426,13 @@ class GeoSgdCommunicator : public Communicator {
   std::shared_ptr<Scope> pserver_scope_;  // parameter on pserver,gloabl scope
   RpcCtxMap send_varname_to_ctx_;
   RpcCtxMap recv_varname_to_ctx_;
+  int send_var_nums_ = 0;
   std::unordered_map<std::string, bool>
       var_list_;  // if var is sparse, using selected rows, bool=true
 
-  std::shared_ptr<BlockingQueue<std::shared_ptr<SparseIdsMap>>>
+  std::shared_ptr<BlockingQueue<std::shared_ptr<SparseIdsVec>>>
       need_push_queue_;
-  std::vector<SparseIdsMap> ids_send_vec_;
+  SparseIdsMap ids_send_map_;
 
   std::unordered_map<std::string, std::vector<int64_t>> absolute_section_;
 
