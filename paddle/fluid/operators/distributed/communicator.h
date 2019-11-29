@@ -364,12 +364,14 @@ class GeoSgdCommunicator : public Communicator {
   void SendThread();
   void SparseIdsMerge(SparseIdsVec* ids_send_vec);
 
-  void SendUpdateDenseVars(const std::string& var_name);
+  void SendUpdateDenseVars(const std::string& var_name,
+                           const std::string& splited_var_name);
   void SendUpdateSparseVars(const std::string& var_name,
                             const std::string& splited_var_name,
                             const std::unordered_set<int64_t>& ids_table);
 
-  void RecvUpdateDenseVars(const std::string& var_name);
+  void RecvUpdateDenseVars(const std::string& var_name,
+                           const std::string& splited_var_name);
   void RecvUpdateSparseVars(const std::string& var_name,
                             const std::string& splited_var_name);
 
@@ -455,6 +457,7 @@ class GeoSgdCommunicator : public Communicator {
   SparseIdsMap ids_send_map_{};
 
   std::unordered_map<std::string, std::vector<int64_t>> absolute_section_;
+  std::unordered_map<std::string, int64_t> vars_first_dimension_;
 
   std::unique_ptr<::ThreadPool> send_threadpool_{nullptr};
   std::unique_ptr<std::thread> send_thread_{nullptr};
