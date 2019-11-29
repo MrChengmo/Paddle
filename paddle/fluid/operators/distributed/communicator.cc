@@ -755,7 +755,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
 
   // calc sub = pserver - old
   VSUB<float>(total_element,
-              var_z_tensor->mutable_data<float>(var_z_tensor->place()),
+              var_z_tensor.mutable_data<float>(var_z_tensor.place()),
               var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
                   begin_loc * dimension,
               var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()));
@@ -770,7 +770,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
 
   // calc old = pserver
   blas.VCOPY(total_element,
-             var_z_tensor->mutable_data<float>(var_z_tensor->place()),
+             var_z_tensor.mutable_data<float>(var_z_tensor.place()),
              var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
                  begin_loc * dimension);
 
