@@ -475,7 +475,6 @@ void GeoSgdCommunicator::Start() {
     // start send and recv thread
     send_thread_.reset(
         new std::thread(std::bind(&GeoSgdCommunicator::SendThread, this)));
-    InitSendMap();
   }
 }
 
@@ -550,6 +549,7 @@ void GeoSgdCommunicator::SendThread() {
   VLOG(0) << "SendThread start!";
   auto before_run_training = GetCurrentUS();
   int need_push_nums = 0;
+  InitSendMap();
   while (running_) {
     std::vector<std::future<void>> task_futures;
     task_futures.reserve(send_var_nums_);
