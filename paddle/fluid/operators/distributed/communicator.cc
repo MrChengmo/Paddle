@@ -537,7 +537,7 @@ void GeoSgdCommunicator::Send(const std::vector<std::string> &sparse_var_names,
            sizeof(int64_t) * element_number);
     ids_vec->at(sparse_var_tables[i]).emplace_back(current_sparse_var);
     VLOG(1) << "ids_vec sparse table: " << sparse_var_tables[i] << " size "
-            << ids_vec->at(sparse_var_tables[i]).size();
+            << current_sparse_var.size();
   }
   need_push_queue_->Push(ids_vec);
   auto after_run_send = GetCurrentUS();
@@ -557,6 +557,7 @@ void GeoSgdCommunicator::SendThread() {
       if (need_push_queue_->Size() > 0) {
         wait_times = 0;
         SparseIdsMerge((need_push_queue_->Pop().get()));
+        need_push_nums++;
       } else if (need_push_queue_->Size() == 0) {
         VLOG(3) << "wait_times -> " << wait_times;
         if (wait_times >= FLAGS_communicator_send_wait_times) {
