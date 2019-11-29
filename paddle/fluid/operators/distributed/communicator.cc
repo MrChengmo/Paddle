@@ -623,18 +623,18 @@ void GeoSgdCommunicator::SendThread() {
 
 void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
   auto before_run_ids_merge_ = GetCurrentUS();
-  VLOG(1) << "ids_vec merge size " << (*ids_send_vec).size();
+  VLOG(4) << "ids_vec merge size " << (*ids_send_vec).size();
   for (auto &sparse_table : (*ids_send_vec)) {
     auto &sparse_table_name = sparse_table.first;
-    VLOG(1) << "sparse table " << sparse_table_name << " size "
+    VLOG(4) << "sparse table " << sparse_table_name << " size "
             << (sparse_table.second).size();
     for (auto sparse_var : sparse_table.second) {
-      VLOG(1) << "sparse_var size " << sparse_var.size();
+      VLOG(4) << "sparse_var size " << sparse_var.size();
       for (size_t i = 0; i < sparse_var.size(); i++) {
         auto ep_idx = GetSectionIndex(sparse_var[i],
                                       absolute_section_[sparse_table_name]);
         ids_send_map_[sparse_table_name][ep_idx].insert(sparse_var[i]);
-        VLOG(1) << "Sparse var " << sparse_table_name << " insert "
+        VLOG(4) << "Sparse var " << sparse_table_name << " insert "
                 << sparse_var[i];
       }
     }
