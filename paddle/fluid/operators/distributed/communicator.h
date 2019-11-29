@@ -279,10 +279,6 @@ class Communicator {
   static std::once_flag init_flag_;
 };
 
-using SparseIdsMap =
-    std::unordered_map<std::string, std::vector<std::unordered_set<int64_t>>>;
-using SparseIdsVec =
-    std::unordered_map<std::string, std::vector<std::vector<int64_t>>>;
 class AsyncCommunicator : public Communicator {
  public:
   AsyncCommunicator() {}
@@ -329,6 +325,11 @@ class AsyncCommunicator : public Communicator {
   std::unique_ptr<::ThreadPool> recv_threadpool_{nullptr};
   std::atomic_uint grad_num_{0};  // the num of gradient sent since last recv
 };
+
+using SparseIdsMap =
+    std::unordered_map<std::string, std::vector<std::unordered_set<int64_t>>>;
+using SparseIdsVec =
+    std::unordered_map<std::string, std::vector<std::vector<int64_t>>>;
 
 class GeoSgdCommunicator : public Communicator {
  public:
@@ -419,10 +420,13 @@ class GeoSgdCommunicator : public Communicator {
     ids_send_map_.clear();
     for (auto& iter : var_list_) {
       auto& var_name = DeltaVarToVar(iter.first);
+      VLOG(1) << "var name " << var_name;
       auto is_sparse = iter.second;
+      VLOG(1) << "is sparse " << is_sparse;
       if (is_sparse) {
         auto splited_var_nums =
             recv_varname_to_ctx_[var_name].splited_var_names.size();
+        VLOG(1) << "splited_var_nums " << splited_var_nums;
         ids_send_map_.insert(
             std::pair<std::string, std::vector<std::unordered_set<int64_t>>>(
                 var_name,
