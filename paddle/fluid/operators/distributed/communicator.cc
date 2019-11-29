@@ -475,6 +475,7 @@ void GeoSgdCommunicator::Start() {
     // start send and recv thread
     send_thread_.reset(
         new std::thread(std::bind(&GeoSgdCommunicator::SendThread, this)));
+    InitSendMap();
   }
 }
 
@@ -612,7 +613,7 @@ void GeoSgdCommunicator::SendThread() {
         task_f.wait();
       }
       need_push_nums = 0;
-      ids_send_map_.clear();
+      InitSendMap();
     }
   }
 }
@@ -625,6 +626,7 @@ void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
     VLOG(1) << "sparse table " << sparse_table_name << " size "
             << (sparse_table.second).size();
     for (auto sparse_var : sparse_table.second) {
+      VLOG(1) << "sparse_var size" << sparse_var.size();
       for (size_t i = 0; i < sparse_var.size(); i++) {
         auto ep_idx = GetSectionIndex(sparse_var[i],
                                       absolute_section_[sparse_table_name]);

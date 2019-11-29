@@ -415,6 +415,22 @@ class GeoSgdCommunicator : public Communicator {
     return index;
   }
 
+  void InitSendMap() {
+    ids_send_map_.clear();
+    for (auto& iter : var_list_) {
+      auto& var_name = iter.first;
+      auto is_sparse = iter.second;
+      if (is_sparse) {
+        auto splited_var_nums =
+            recv_varname_to_ctx_[var_name].splited_var_names.size();
+        ids_send_map_.insert(
+            std::pair<std::string, std::vector<std::unordered_set<int64_t>>>(
+                var_name,
+                std::vector<std::unordered_set<int64_t>>{splited_var_nums}));
+      }
+    }
+  }
+
  private:
   int trainer_nums_ = 1;
   int geo_need_push_nums_ = 100;
