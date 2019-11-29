@@ -446,13 +446,9 @@ void GeoSgdCommunicator::InitImpl(
     recv_varname_to_ctx_[var_name] = operators::distributed::RpcContext(
         var_name, vars_names, vars_epmap, vars_sections_int, 0);
 
-    // record sparse section
-    if (is_sparse) {
-      need_thread_nums_ +=
-          send_varname_to_ctx_[send_var_name].height_sections.size();
-      absolute_section_[var_name] = operators::ToAbsoluteSection(
-          send_varname_to_ctx_[send_var_name].height_sections);
-    }
+    absolute_section_[var_name] = operators::ToAbsoluteSection(
+        send_varname_to_ctx_[send_var_name].height_sections);
+
     send_var_nums_ += vars_names.size();
   }
 
@@ -540,6 +536,8 @@ void GeoSgdCommunicator::Send(const std::vector<std::string> &sparse_var_names,
     memcpy(&current_sparse_var[0], var_mutable_data,
            sizeof(int64_t) * element_number);
     ids_vec->at(sparse_var_tables[i]).emplace_back(current_sparse_var);
+    VLOG(1) << "ids_vec sparse table: " << sparse_var_tables[i] << " size "
+            << ids_vec->at(sparse_var_tables[i]).size();
   }
   need_push_queue_->Push(ids_vec);
   auto after_run_send = GetCurrentUS();
@@ -620,8 +618,11 @@ void GeoSgdCommunicator::SendThread() {
 
 void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
   auto before_run_ids_merge_ = GetCurrentUS();
-  for (auto &sparse_table : *ids_send_vec) {
+  VLOG(1) << "ids_vec merge size " << (*ids_send_vec).size();
+  for (auto &sparse_table : (*ids_send_vec)) {
     auto &sparse_table_name = sparse_table.first;
+    VLOG(1) << "sparse table " << sparse_table_name << " size "
+            << (sparse_table.second).size();
     for (auto sparse_var : sparse_table.second) {
       for (size_t i = 0; i < sparse_var.size(); i++) {
         auto ep_idx = GetSectionIndex(sparse_var[i],
