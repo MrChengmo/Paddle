@@ -418,7 +418,7 @@ class GeoSgdCommunicator : public Communicator {
   void InitSendMap() {
     ids_send_map_.clear();
     for (auto& iter : var_list_) {
-      auto& var_name = iter.first;
+      auto& var_name = DeltaVarToVar(iter.first);
       auto is_sparse = iter.second;
       if (is_sparse) {
         auto splited_var_nums =

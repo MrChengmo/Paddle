@@ -531,7 +531,8 @@ void GeoSgdCommunicator::Send(const std::vector<std::string> &sparse_var_names,
     auto *var = scope.FindVar(sparse_var_names[i]);
     auto var_tensor = var->Get<framework::LoDTensor>();
     int element_number = var_tensor.numel();
-    int *var_mutable_data = var_tensor.mutable_data<int>(var_tensor.place());
+    int64_t *var_mutable_data =
+        var_tensor.mutable_data<int64_t>(var_tensor.place());
     std::vector<int64_t> current_sparse_var;
     current_sparse_var.reserve(element_number);
     memcpy(&current_sparse_var[0], var_mutable_data,
@@ -626,7 +627,7 @@ void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
     VLOG(1) << "sparse table " << sparse_table_name << " size "
             << (sparse_table.second).size();
     for (auto sparse_var : sparse_table.second) {
-      VLOG(1) << "sparse_var size" << sparse_var.size();
+      VLOG(1) << "sparse_var size " << sparse_var.size();
       for (size_t i = 0; i < sparse_var.size(); i++) {
         auto ep_idx = GetSectionIndex(sparse_var[i],
                                       absolute_section_[sparse_table_name]);
