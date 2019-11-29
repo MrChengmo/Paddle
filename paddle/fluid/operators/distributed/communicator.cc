@@ -602,16 +602,18 @@ void GeoSgdCommunicator::SendThread() {
                 send_threadpool_->enqueue(std::move(send_task)));
           }
         } else {
-          auto send_task = [this, &var_name] {
-            auto before_run_geo = GetCurrentUS();
-            SendUpdateDenseVars(var_name);
-            RecvUpdateDenseVars(var_name);
-            auto after_run_geo = GetCurrentUS();
-            VLOG(1) << "run GEO-SGD var " << var_name << " use time "
-                    << after_run_geo - before_run_geo;
-          };
-          task_futures.emplace_back(
-              send_threadpool_->enqueue(std::move(send_task)));
+          for (auto &splited_var_name : iter.second.splited_var_names) {
+            auto send_task = [this, &var_name, &splited_var_name] {
+              auto before_run_geo = GetCurrentUS();
+              SendUpdateDenseVars(var_name, splited_var_name);
+              RecvUpdateDenseVars(var_name, splited_var_name);
+              auto after_run_geo = GetCurrentUS();
+              VLOG(1) << "run GEO-SGD var " << var_name << " use time "
+                      << after_run_geo - before_run_geo;
+            };
+            task_futures.emplace_back(
+                send_threadpool_->enqueue(std::move(send_task)));
+          }
         }
       }
       for (auto &task_f : task_futures) {
@@ -664,17 +666,17 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   auto cpu_ctx = paddle::platform::CPUDeviceContext();
   auto dims = var_x_tensor.dims();
 
-  // create delta var in delta scope
-  auto *var_z = delta_scope_->Var(splited_var_name);
-  auto *var_z_tensor = var_z->GetMutable<framework::LoDTensor>();
-
   auto total_element = var_x_tensor.numel();
   int64_t begin_loc = absolute_section_[origin_var_name][splited_var_index];
   int64_t dimension = total_element / vars_first_dimension_[origin_var_name];
   int64_t section =
       send_varname_to_ctx_[var_name].height_sections[splited_var_index];
   dims[0] = section;
-  var_z_tensor->mutable_data<float>(dims, var_x_tensor.place());
+
+  // create delta var in delta scope
+  auto *var_z = delta_scope_->Var(splited_var_name);
+  auto *var_z_tensor = var_z->GetMutable<framework::LoDTensor>();
+  var_z_tensor->Resize(dims);
 
   // calc sub = var_training - var_old
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
@@ -737,8 +739,14 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
 
   auto *var_z = pserver_scope_.get()->FindVar(origin_splited_var_name);
   auto var_z_tensor = var_z->Get<framework::LoDTensor>();
+  auto dims = var_z_tensor.dims();
 
-  auto total_element = var_x_tensor.numel();
+  auto *var_y_sub = old_scope_->Var(origin_splited_var_name);
+  auto *var_y_sub_tensor = var_y_sub->Get<framework::LoDTensor>();
+  var_y_sub_tensor->Resize(dims);
+  var_y_sub_tensor->mutable_data<float>(dims, var_y_sub_tensor->place());
+
+  auto total_element = var_z_tensor.numel();
   int64_t begin_loc = absolute_section_[origin_var_name][splited_var_index];
   int64_t dimension = total_element / vars_first_dimension_[origin_var_name];
   int64_t section =
@@ -749,30 +757,25 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
 
   // calc sub = pserver - old
   VSUB<float>(
-      section * dimension,
-      var_z_tensor->mutable_data<float>(var_z_tensor->place())
-              var_x_tensor.mutable_data<float>(var_x_tensor.place()) +
+      total_element, var_z_tensor->mutable_data<float>(var_z_tensor->place()),
+      var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
           begin_loc * dimension,
-      var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()) +
-          begin_loc * dimension);
+      var_y_sub_tensor->mutable_data<float>(dims, var_y_sub_tensor.place()));
 
-  blas.SCAL(var_y_sub_tensor.numel(), -1,
-            var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()));
-  blas.VADD(var_y_tensor.numel(),
+  // calc train += sub
+  blas.VADD(total_element,
+            var_x_tensor.mutable_data<float>(var_x_tensor.place()) +
+                begin_loc * dimension,
             var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()),
-            var_z_tensor.mutable_data<float>(var_z_tensor.place()),
-            var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()));
-  // calc recv += sub
-  blas.VADD(var_x_tensor.numel(),
-            var_x_tensor.mutable_data<float>(var_x_tensor.place()),
-            var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()),
-            var_x_tensor.mutable_data<float>(var_x_tensor.place()));
-  VSUB(row_numel, z_val, y_val, row_delta.data());
-  blas.VADD(row_numel, row_delta.data(), x_val, x_val);
-  blas.VCOPY(row_numel, z_val, y_val);
+            var_x_tensor.mutable_data<float>(var_x_tensor.place()) +
+                begin_loc * dimension);
 
   // calc old = pserver
-  framework::CopyVariable(*var_z, var_y);
+  blas.VCOPY(total_element,
+             var_z_tensor->mutable_data<float>(var_z_tensor->place()),
+             var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
+                 begin_loc * dimension);
+
   auto after_run_update = GetCurrentUS();
   VLOG(1) << "dense var update " << origin_var_name << " use time "
           << after_run_update - before_run_update;
