@@ -419,7 +419,7 @@ class GeoSgdCommunicator : public Communicator {
   void InitSendMap() {
     ids_send_map_.clear();
     for (auto& iter : var_list_) {
-      auto& var_name = DeltaVarToVar(iter.first);
+      auto& var_name = iter.first;
       VLOG(1) << "var name " << var_name;
       auto is_sparse = iter.second;
       VLOG(1) << "is sparse " << is_sparse;
@@ -452,7 +452,7 @@ class GeoSgdCommunicator : public Communicator {
 
   std::shared_ptr<BlockingQueue<std::shared_ptr<SparseIdsVec>>>
       need_push_queue_;
-  SparseIdsMap ids_send_map_;
+  SparseIdsMap ids_send_map_{};
 
   std::unordered_map<std::string, std::vector<int64_t>> absolute_section_;
 
