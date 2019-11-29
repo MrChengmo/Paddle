@@ -685,7 +685,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   VSUB<float>(section * dimension,
               var_x_tensor.mutable_data<float>(var_x_tensor.place()) +
                   begin_loc * dimension,
-              var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()) +
+              var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
                   begin_loc * dimension,
               var_z_tensor->mutable_data<float>(var_z_tensor->place()));
 
@@ -743,25 +743,22 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
   auto dims = var_z_tensor.dims();
 
   auto *var_y_sub = old_scope_->Var(origin_splited_var_name);
-  auto *var_y_sub_tensor = var_y_sub->Get<framework::LoDTensor>();
-  var_y_sub_tensor->Resize(dims);
-  var_y_sub_tensor->mutable_data<float>(dims, var_y_sub_tensor->place());
+  auto var_y_sub_tensor = var_y_sub->Get<framework::LoDTensor>();
+  var_y_sub_tensor.Resize(dims);
 
   auto total_element = var_z_tensor.numel();
   int64_t begin_loc = absolute_section_[origin_var_name][splited_var_index];
   int64_t dimension = total_element / vars_first_dimension_[origin_var_name];
-  int64_t section =
-      send_varname_to_ctx_[var_name].height_sections[splited_var_index];
 
   auto cpu_ctx = paddle::platform::CPUDeviceContext();
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
 
   // calc sub = pserver - old
-  VSUB<float>(
-      total_element, var_z_tensor->mutable_data<float>(var_z_tensor->place()),
-      var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
-          begin_loc * dimension,
-      var_y_sub_tensor->mutable_data<float>(dims, var_y_sub_tensor.place()));
+  VSUB<float>(total_element,
+              var_z_tensor->mutable_data<float>(var_z_tensor->place()),
+              var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
+                  begin_loc * dimension,
+              var_y_sub_tensor.mutable_data<float>(var_y_sub_tensor.place()));
 
   // calc train += sub
   blas.VADD(total_element,
