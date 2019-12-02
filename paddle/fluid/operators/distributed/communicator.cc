@@ -663,11 +663,9 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
 
   auto *var_x = training_scope_->FindVar(origin_var_name);
   auto var_x_tensor = var_x->Get<framework::LoDTensor>();
-  auto *var_x_data = var_x_tensor.mutable_data<float>(var_x_tensor.place());
 
   auto *var_y = old_scope_->FindVar(origin_var_name);
   auto var_y_tensor = var_y->Get<framework::LoDTensor>();
-  auto *var_y_data = var_y_tensor.mutable_data<float>(var_x_tensor.place());
 
   auto dims = var_x_tensor.dims();
   auto total_element = var_x_tensor.numel();
@@ -682,33 +680,30 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
     begin_loc = absolute_section_[origin_var_name][splited_var_index];
     dimension = total_element / vars_first_dimension_[origin_var_name];
     total_element = section * dimension;
-
-    framework::Tensor *var_x_split_tensor =
-        training_scope_->Var(splited_var_name)
-            ->GetMutable<framework::LoDTensor>();
-    *var_x_split_tensor = var_x_tensor.Slice(begin_loc, begin_loc + section);
-    var_x_data = var_x_split_tensor->mutable_data<float>(var_x_tensor.place());
-    VLOG(1) << "Dense splited var: " << splited_var_name << "var_x_data[0] "
-            << var_x_data[0];
-    framework::Tensor *var_y_splited_tensor =
-        old_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
-    *var_y_splited_tensor = var_y_tensor.Slice(begin_loc, begin_loc + section);
-    var_y_data =
-        var_y_splited_tensor->mutable_data<float>(var_x_tensor.place());
-    VLOG(1) << "Dense splited var: " << splited_var_name << "var_y_data[0] "
-            << var_y_data[0];
     VLOG(1) << "Dense splited var: " << splited_var_name
             << " section: " << section << " dimension: " << dimension
             << " begin loc: " << begin_loc << " total_element "
             << total_element;
   }
 
+  auto *var_x_data = var_x_tensor.mutable_data<float>(var_x_tensor.place()) +
+                     begin_loc * dimension;
+  VLOG(1) << "Dense splited var: " << splited_var_name << " var_x_data[0] "
+          << var_x_data[0];
+  auto *var_y_data = var_y_tensor.mutable_data<float>(var_x_tensor.place()) +
+                     begin_loc * dimension;
+  VLOG(1) << "Dense splited var: " << splited_var_name << " var_y_data[0] "
+          << var_y_data[0];
+
   // create delta var in delta scope
   auto *var_z_tensor =
       delta_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
   var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
-  math::SetConstant<paddle::platform::CPUDeviceContext, float> constant_functor;
-  constant_functor(cpu_ctx, var_z_tensor, static_cast<float>(0));
+
+  // math::SetConstant<paddle::platform::CPUDeviceContext, float>
+  // constant_functor;
+  // constant_functor(cpu_ctx, var_z_tensor, static_cast<float>(0));
+
   auto *var_z_data =
       var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
 
