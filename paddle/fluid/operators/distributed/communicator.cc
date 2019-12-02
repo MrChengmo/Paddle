@@ -691,7 +691,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   VLOG(1) << "Dense splited var: " << splited_var_name << " var_x_data[0] "
           << var_x_data[0] << " var_x_data[end] "
           << var_x_data[total_element - 1];
-  auto *var_y_data = var_y_tensor.mutable_data<float>(var_x_tensor.place()) +
+  auto *var_y_data = var_y_tensor.mutable_data<float>(var_y_tensor.place()) +
                      begin_loc * dimension;
   VLOG(1) << "Dense splited var: " << splited_var_name << " var_y_data[0] "
           << var_y_data[0] << " var_y_data[end] "
@@ -701,9 +701,9 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   auto *var_z_tensor =
       delta_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
   var_z_tensor->Resize(dims);
-  var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
+  var_z_tensor->mutable_data<float>(dims, cpu_ctx.GetPlace());
 
-  auto *var_z_data = var_z_tensor->mutable_data<float>(var_z_tensor.place());
+  auto *var_z_data = var_z_tensor->mutable_data<float>(cpu_ctx.GetPlace());
 
   VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
           << var_z_data[0] << " var_z_data[end] "
