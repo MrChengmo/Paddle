@@ -688,16 +688,19 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
             ->GetMutable<framework::LoDTensor>();
     *var_x_split_tensor = var_x_tensor.Slice(begin_loc, begin_loc + section);
     var_x_data = var_x_split_tensor->mutable_data<float>(var_x_tensor.place());
-
+    VLOG(1) << "Dense splited var: " << splited_var_name << "var_x_data[0] "
+            << var_x_data[0];
     framework::Tensor *var_y_splited_tensor =
         old_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
     *var_y_splited_tensor = var_y_tensor.Slice(begin_loc, begin_loc + section);
     var_y_data =
         var_y_splited_tensor->mutable_data<float>(var_x_tensor.place());
-
+    VLOG(1) << "Dense splited var: " << splited_var_name << "var_y_data[0] "
+            << var_y_data[0];
     VLOG(1) << "Dense splited var: " << splited_var_name
             << " section: " << section << " dimension: " << dimension
-            << " begin loc: " << begin_loc;
+            << " begin loc: " << begin_loc << " total_element "
+            << total_element;
   }
 
   // create delta var in delta scope
@@ -706,14 +709,21 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   auto *var_z_data =
       var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
 
+  math::SetConstant<paddle::platform::CPUDeviceContext, float> constant_functor;
+  constant_functor(cpu_ctx, var_z_tensor, static_cast<float>(0));
+
+  VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
+          << var_z_data[0];
+
   // calc sub = var_training - var_old
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
   blas.VSUB(total_element, var_x_data, var_y_data, var_z_data);
+  VLOG(1) << "Dense splited var: " << splited_var_name << " After VSUB";
 
   // calc var_delta = sub / trainer_nums
   float trainer_param = 1.0 / static_cast<float>(trainer_nums_);
   blas.SCAL(total_element, trainer_param, var_z_data);
-
+  VLOG(1) << "Dense splited var: " << splited_var_name << " After SCAL";
   // calc var_old += var_delta
 
   if (out_num > 1) {
@@ -721,7 +731,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
                  begin_loc * section;
   }
   blas.VADD(total_element, var_y_data, var_z_data, var_y_data);
-
+  VLOG(1) << "Dense splited var: " << splited_var_name << " After VADD";
   auto after_run_send_dense = GetCurrentUS();
   VLOG(1) << "run send update dense var " << var_name << " use time "
           << after_run_send_dense - before_run_send_dense;
