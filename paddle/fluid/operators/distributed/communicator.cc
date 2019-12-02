@@ -663,11 +663,11 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
 
   auto *var_x = training_scope_->FindVar(origin_var_name);
   auto &var_x_tensor = var_x->Get<framework::LoDTensor>();
-  auto *var_x_data = var_x_tensor.mutable_data<float>(cpu_ctx.GetPlace());
+  auto *var_x_data = var_x_tensor.mutable_data<float>(var_x_tensor.place());
 
   auto *var_y = old_scope_->FindVar(origin_var_name);
   auto &var_y_tensor = var_y->Get<framework::LoDTensor>();
-  auto *var_y_data = var_y_tensor.mutable_data<float>(cpu_ctx.GetPlace());
+  auto *var_y_data = var_y_tensor.mutable_data<float>(var_x_tensor.place());
 
   auto dims = var_x_tensor.dims();
   auto total_element = var_x_tensor.numel();
@@ -687,12 +687,13 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
         training_scope_->Var(splited_var_name)
             ->GetMutable<framework::LoDTensor>();
     *var_x_split_tensor = var_x_tensor.Slice(begin_loc, begin_loc + section);
-    var_x_data = var_x_split_tensor->mutable_data<float>(cpu_ctx.GetPlace());
+    var_x_data = var_x_split_tensor->mutable_data<float>(var_x_tensor.place());
 
     framework::Tensor *var_y_splited_tensor =
         old_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
     *var_y_splited_tensor = var_y_tensor.Slice(begin_loc, begin_loc + section);
-    var_y_data = var_y_splited_tensor->mutable_data<float>(cpu_ctx.GetPlace());
+    var_y_data =
+        var_y_splited_tensor->mutable_data<float>(var_x_tensor.place());
 
     VLOG(1) << "Dense splited var: " << splited_var_name
             << " section: " << section << " dimension: " << dimension
@@ -716,7 +717,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   // calc var_old += var_delta
 
   if (out_num > 1) {
-    var_y_data = var_y_tensor.mutable_data<float>(cpu_ctx.GetPlace()) +
+    var_y_data = var_y_tensor.mutable_data<float>(var_x_tensor.place()) +
                  begin_loc * section;
   }
   blas.VADD(total_element, var_y_data, var_z_data, var_y_data);
