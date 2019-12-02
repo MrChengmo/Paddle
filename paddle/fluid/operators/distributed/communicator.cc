@@ -1020,7 +1020,7 @@ void GeoSgdCommunicator::RpcSend(const std::string &origin_var_name,
   auto trainer_id = send_varname_to_ctx_[origin_var_name].trainer_id;
   auto endpoint =
       send_varname_to_ctx_[origin_var_name].epmap[splited_var_index];
-  VLOG(1) << "Varname: " << origin_var_name
+  VLOG(3) << "Varname: " << origin_var_name
           << " splited_varname: " << splited_var_name << " splited_var_index "
           << splited_var_index << " trainer_id " << trainer_id << " endpoint "
           << endpoint;
