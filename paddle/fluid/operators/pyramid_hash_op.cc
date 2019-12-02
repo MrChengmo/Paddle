@@ -165,9 +165,31 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
                                        len * sizeof(T)));
   }
 
+  // void hash_embedding_ff(const T* hash_id, int len, T* top_pos,
+  //                        const T* weights, int _num_emb, int _rand_len,
+  //                        int _space_len, int* ids_vec, int* ids_iter) const {
+  //   unsigned int pos1 = XXH32(hash_id, len * sizeof(T), 0) % _space_len;
+  //   unsigned int pos2 = XXH32(hash_id, len * sizeof(T), _rand_len) %
+  //   _space_len;
+
+  //   for (unsigned int j = 0; j != _num_emb; j += _rand_len) {
+  //     if (j + _rand_len < _num_emb) {
+  //       __builtin_prefetch(weights + pos2);
+  //       __builtin_prefetch(top_pos + j + _rand_len);
+  //     }
+  //     ids_vec[(*ids_iter)++] = pos1;
+  //     unsigned int pos3 =
+  //         XXH32(hash_id, len * sizeof(T), j + 2 * _rand_len) % _space_len;
+  //     memcpy(top_pos + j, const_cast<float*>(weights + pos1),
+  //            _rand_len * sizeof(T));
+  //     pos1 = pos2;
+  //     pos2 = pos3;
+  //   }
+  // }
+
   void hash_embedding_ff(const T* hash_id, int len, T* top_pos,
                          const T* weights, int _num_emb, int _rand_len,
-                         int _space_len, int* ids_vec, int* ids_iter) const {
+                         int _space_len) const {
     unsigned int pos1 = XXH32(hash_id, len * sizeof(T), 0) % _space_len;
     unsigned int pos2 = XXH32(hash_id, len * sizeof(T), _rand_len) % _space_len;
 
@@ -176,7 +198,6 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
         __builtin_prefetch(weights + pos2);
         __builtin_prefetch(top_pos + j + _rand_len);
       }
-      ids_vec[(*ids_iter)++] = pos1;
       unsigned int pos3 =
           XXH32(hash_id, len * sizeof(T), j + 2 * _rand_len) % _space_len;
       memcpy(top_pos + j, const_cast<float*>(weights + pos1),
@@ -290,13 +311,14 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
 
     iter = drop_pos->mutable_data<int>(ctx.GetPlace());
     // for distribute communicaton
-    auto* ids_buff = ctx.Output<Tensor>("Ids");
-    int useful_word_nums = std::count(iter, iter_end, 1);
-    ids_buff->Resize(
-        framework::make_ddim({useful_word_nums * (_num_emb / _rand_len), 1}));
-    VLOG(1) << "ids_vec size: " << useful_word_nums * (_num_emb / _rand_len);
-    int* ids_vec = ids_buff->mutable_data<int>(ctx.GetPlace());
-    int ids_iter = 0;
+    // auto* ids_buff = ctx.Output<Tensor>("Ids");
+    // int useful_word_nums = std::count(iter, iter_end, 1);
+    // ids_buff->Resize(
+    //     framework::make_ddim({useful_word_nums * (_num_emb / _rand_len),
+    //     1}));
+    // VLOG(1) << "ids_vec size: " << useful_word_nums * (_num_emb / _rand_len);
+    // int* ids_vec = ids_buff->mutable_data<int>(ctx.GetPlace());
+    // int ids_iter = 0;
 
     int top_counter = 0;
     for (int i = 0; i < offset.size() - 1; ++i) {
@@ -322,9 +344,12 @@ class CPUPyramidHashOPKernel : public framework::OpKernel<T> {
               // do nothing
             } else {
               auto* top_pos = top_data + top_counter++ * _num_emb;
+              // hash_embedding_ff((const T*)(bottom_data + offset[i] + l),
+              //                   ilayer + 1, top_pos, weights, _num_emb,
+              //                   _rand_len, _space_len, ids_vec, &ids_iter);
               hash_embedding_ff((const T*)(bottom_data + offset[i] + l),
                                 ilayer + 1, top_pos, weights, _num_emb,
-                                _rand_len, _space_len, ids_vec, &ids_iter);
+                                _rand_len, _space_len);
             }
           }
         }
