@@ -702,7 +702,6 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
       delta_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
   var_z_tensor->Resize(dims);
   var_z_tensor->mutable_data<float>(dims, cpu_ctx.GetPlace());
-
   auto *var_z_data = var_z_tensor->mutable_data<float>(cpu_ctx.GetPlace());
 
   VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
@@ -712,7 +711,7 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   // calc sub = var_training - var_old
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
   blas.VSUB(total_element, var_x_data, var_y_data, var_z_data);
-  VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
+  VLOG(1) << "Dense splited var: " << splited_var_name << " var_z_data[0] "
           << var_z_data[0] << " var_z_data[end] "
           << var_z_data[total_element - 1];
 
@@ -802,9 +801,10 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
           << var_z_data[0] << " var_z_data[end] "
           << var_z_data[total_element - 1];
 
-  auto *var_y_sub = old_scope_->Var(origin_splited_var_name);
-  auto var_y_sub_tensor = var_y_sub->Get<framework::LoDTensor>();
+  auto var_y_sub_tensor =
+      old_scope_->Var(origin_splited_var_name)->Get<framework::LoDTensor>();
   var_y_sub_tensor.Resize(dims);
+  var_y_sub_tensor.mutable_data<float>(dims, cpu_ctx.GetPlace());
   auto *var_y_sub_data =
       var_y_sub_tensor.mutable_data<float>(cpu_ctx.GetPlace());
   VLOG(1) << "Dense splited var: " << splited_var_name << " var_y_sub_data[0] "
@@ -814,7 +814,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
 
   // calc sub = pserver - old
-  blas.VSUB(total_element, var_z_data, var_y_data, vay_y_sub_data);
+  blas.VSUB(total_element, var_z_data, var_y_data, var_y_sub_data);
   VLOG(1) << "Dense splited var: " << splited_var_name << " var_y_sub_data[0] "
           << var_y_sub_data[0] << " var_y_sub_data[end] "
           << var_y_sub_data[total_element - 1];
