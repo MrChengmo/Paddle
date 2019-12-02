@@ -801,12 +801,13 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
           << var_z_data[0] << " var_z_data[end] "
           << var_z_data[total_element - 1];
 
-  auto var_y_sub_tensor =
+  auto *var_y_sub_tensor =
       old_scope_->Var(origin_splited_var_name)->Get<framework::LoDTensor>();
-  var_y_sub_tensor.Resize(dims);
-  var_y_sub_tensor.mutable_data<float>(dims, cpu_ctx.GetPlace());
+  var_y_sub_tensor->Resize(dims);
+  var_y_sub_tensor->mutable_data<float>(dims, cpu_ctx.GetPlace());
   auto *var_y_sub_data =
-      var_y_sub_tensor.mutable_data<float>(cpu_ctx.GetPlace());
+      var_y_sub_tensor->mutable_data<float>(cpu_ctx.GetPlace());
+
   VLOG(1) << "Dense splited var: " << splited_var_name << " var_y_sub_data[0] "
           << var_y_sub_data[0] << " var_y_sub_data[end] "
           << var_y_sub_data[total_element - 1];
