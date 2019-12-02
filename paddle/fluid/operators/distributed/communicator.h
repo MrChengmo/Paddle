@@ -434,7 +434,7 @@ class GeoSgdCommunicator : public Communicator {
                 var_name,
                 std::vector<std::unordered_set<int64_t>>{splited_var_nums}));
         for (size_t i = 0; i < ids_send_map_[var_name].size(); i++) {
-          int64_t section = recv_varname_to_ctx_[var_name].sections[i];
+          int64_t section = recv_varname_to_ctx_[var_name].height_sections[i];
           ids_send_map_[var_name][i].reserve(section);
         }
       }
