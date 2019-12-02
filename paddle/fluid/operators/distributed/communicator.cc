@@ -641,7 +641,7 @@ void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
       VLOG(1) << "sparse_var size " << sparse_var.size();
       auto merge_task = [this, &sparse_table_name, &sparse_var] {
         VLOG(1) << "sparse_table_name" << sparse_table_name;
-        VLOG(1) << "In task sparse_var size " sparse_var.size();
+        VLOG(1) << "In task sparse_var size " << sparse_var.size();
         for (size_t i = 0; i < sparse_var.size(); i++) {
           auto ep_idx = GetSectionIndex(sparse_var[i],
                                         absolute_section_[sparse_table_name]);
@@ -649,7 +649,7 @@ void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
         }
       };
       task_futures.emplace_back(
-          merge_threadpool_->enqueue(std::move(send_task)));
+          merge_threadpool_->enqueue(std::move(merge_task)));
     }
   }
   for (auto &task_f : task_futures) {
