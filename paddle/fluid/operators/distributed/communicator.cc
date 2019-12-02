@@ -662,26 +662,38 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   auto cpu_ctx = paddle::platform::CPUDeviceContext();
 
   auto *var_x = training_scope_->FindVar(origin_var_name);
-  auto var_x_tensor = var_x->Get<framework::LoDTensor>();
+  auto &var_x_tensor = var_x->Get<framework::LoDTensor>();
   auto *var_x_data = var_x_tensor.mutable_data<float>(cpu_ctx.GetPlace());
 
   auto *var_y = old_scope_->FindVar(origin_var_name);
-  auto var_y_tensor = var_y->Get<framework::LoDTensor>();
+  auto &var_y_tensor = var_y->Get<framework::LoDTensor>();
   auto *var_y_data = var_y_tensor.mutable_data<float>(cpu_ctx.GetPlace());
 
   auto dims = var_x_tensor.dims();
   auto total_element = var_x_tensor.numel();
+  int64_t section = 0;
+  int64_t begin_loc = 0;
+  int64_t dimension = 0;
 
   size_t out_num = send_varname_to_ctx_[var_name].height_sections.size();
   if (out_num > 1) {
-    int64_t section =
-        send_varname_to_ctx_[var_name].height_sections[splited_var_index];
+    section = send_varname_to_ctx_[var_name].height_sections[splited_var_index];
     dims[0] = section;
-    int64_t begin_loc = absolute_section_[origin_var_name][splited_var_index];
-    int64_t dimension = total_element / vars_first_dimension_[origin_var_name];
+    begin_loc = absolute_section_[origin_var_name][splited_var_index];
+    dimension = total_element / vars_first_dimension_[origin_var_name];
     total_element = section * dimension;
-    var_x_data = var_x_tensor.Slice(begin_loc, begin_loc + section);
-    var_y_data = var_y_tensor.Slice(begin_loc, begin_loc + section);
+
+    framework::Tensor *var_x_split_tensor =
+        training_scope_->Var(splited_var_name)
+            ->GetMutable<framework::LoDTensor>();
+    *var_x_split_tensor = var_x_tensor.Slice(begin_loc, begin_loc + section);
+    var_x_data = var_x_split_tensor->mutable_data<float>(cpu_ctx.GetPlace());
+
+    framework::Tensor *var_y_splited_tensor =
+        old_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
+    *var_y_splited_tensor = var_y_tensor.Slice(begin_loc, begin_loc + section);
+    var_y_data = var_y_splited_tensor->mutable_data<float>(cpu_ctx.GetPlace());
+
     VLOG(1) << "Dense splited var: " << splited_var_name
             << " section: " << section << " dimension: " << dimension
             << " begin loc: " << begin_loc;
@@ -702,6 +714,11 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   blas.SCAL(total_element, trainer_param, var_z_data);
 
   // calc var_old += var_delta
+
+  if (out_num > 1) {
+    var_y_data = var_y_tensor.mutable_data<float>(cpu_ctx.GetPlace()) +
+                 begin_loc * section;
+  }
   blas.VADD(total_element, var_y_data, var_z_data, var_y_data);
 
   auto after_run_send_dense = GetCurrentUS();
@@ -727,7 +744,7 @@ void GeoSgdCommunicator::RecvUpdateDenseVars(
   auto splited_var_index = GetSplitedVarIndex(var_name, splited_var_name);
 
   auto before_run_recv = GetCurrentUS();
-  VLOG(1) << "Dense recv origin_var_name: " origin_var_name
+  VLOG(1) << "Dense recv origin_var_name: " << origin_var_name
           << " origin_splited_var_name: " << origin_splited_var_name
           << " splited_var_index: " << splited_var_index;
   RpcRecv(origin_var_name, origin_splited_var_name, splited_var_index);
