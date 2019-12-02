@@ -706,11 +706,11 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   // create delta var in delta scope
   auto *var_z_tensor =
       delta_scope_->Var(splited_var_name)->GetMutable<framework::LoDTensor>();
-  auto *var_z_data =
-      var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
-
+  var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
   math::SetConstant<paddle::platform::CPUDeviceContext, float> constant_functor;
   constant_functor(cpu_ctx, var_z_tensor, static_cast<float>(0));
+  auto *var_z_data =
+      var_z_tensor->mutable_data<float>(dims, var_z_tensor->place());
 
   VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
           << var_z_data[0];
@@ -719,7 +719,8 @@ void GeoSgdCommunicator::SendUpdateDenseVars(
   auto blas = math::GetBlas<paddle::platform::CPUDeviceContext, float>(cpu_ctx);
   blas.VSUB(total_element, var_x_data, var_y_data, var_z_data);
   VLOG(1) << "Dense splited var: " << splited_var_name << " After VSUB";
-
+  VLOG(1) << "Dense splited var: " << splited_var_name << "var_z_data[0] "
+          << var_z_data[0];
   // calc var_delta = sub / trainer_nums
   float trainer_param = 1.0 / static_cast<float>(trainer_nums_);
   blas.SCAL(total_element, trainer_param, var_z_data);
