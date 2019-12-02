@@ -462,6 +462,8 @@ void GeoSgdCommunicator::InitImpl(
   }
 
   send_threadpool_.reset(new ::ThreadPool(FLAGS_communicator_thread_pool_size));
+  merge_threadpool_.reset(
+      new ::ThreadPool(FLAGS_communicator_thread_pool_size));
   need_push_queue_ =
       std::make_shared<BlockingQueue<std::shared_ptr<SparseIdsVec>>>(
           geo_need_push_nums);
@@ -628,20 +630,30 @@ void GeoSgdCommunicator::SendThread() {
 void GeoSgdCommunicator::SparseIdsMerge(SparseIdsVec *ids_send_vec) {
   auto before_run_ids_merge_ = GetCurrentUS();
   VLOG(4) << "ids_vec merge size " << (*ids_send_vec).size();
+  std::vector<std::future<void>> task_futures;
+  task_futures.reserve(FLAGS_communicator_thread_pool_size);
+
   for (auto &sparse_table : (*ids_send_vec)) {
     auto &sparse_table_name = sparse_table.first;
     VLOG(4) << "sparse table " << sparse_table_name << " size "
             << (sparse_table.second).size();
-    for (auto sparse_var : sparse_table.second) {
-      VLOG(4) << "sparse_var size " << sparse_var.size();
-      for (size_t i = 0; i < sparse_var.size(); i++) {
-        auto ep_idx = GetSectionIndex(sparse_var[i],
-                                      absolute_section_[sparse_table_name]);
-        ids_send_map_[sparse_table_name][ep_idx].insert(sparse_var[i]);
-        VLOG(4) << "Sparse var " << sparse_table_name << " insert "
-                << sparse_var[i];
-      }
+    for (auto &sparse_var : sparse_table.second) {
+      VLOG(1) << "sparse_var size " << sparse_var.size();
+      auto merge_task = [this, &sparse_table_name, &sparse_var] {
+        VLOG(1) << "sparse_table_name" << sparse_table_name;
+        VLOG(1) << "In task sparse_var size " sparse_var.size();
+        for (size_t i = 0; i < sparse_var.size(); i++) {
+          auto ep_idx = GetSectionIndex(sparse_var[i],
+                                        absolute_section_[sparse_table_name]);
+          ids_send_map_[sparse_table_name][ep_idx].insert(sparse_var[i]);
+        }
+      };
+      task_futures.emplace_back(
+          merge_threadpool_->enqueue(std::move(send_task)));
     }
+  }
+  for (auto &task_f : task_futures) {
+    task_f.wait();
   }
   auto after_run_ids_merge_ = GetCurrentUS();
   VLOG(1) << "run SparseIdsMerge use time "

@@ -464,6 +464,7 @@ class GeoSgdCommunicator : public Communicator {
   std::unordered_map<std::string, int64_t> vars_first_dimension_;
 
   std::unique_ptr<::ThreadPool> send_threadpool_{nullptr};
+  std::unique_ptr<::ThreadPool> merge_threadpool_{nullptr};
   std::unique_ptr<std::thread> send_thread_{nullptr};
 
   size_t need_thread_nums_{0};
