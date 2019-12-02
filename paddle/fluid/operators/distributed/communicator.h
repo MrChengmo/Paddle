@@ -422,20 +422,20 @@ class GeoSgdCommunicator : public Communicator {
     ids_send_map_.clear();
     for (auto& iter : var_list_) {
       auto& var_name = iter.first;
-      VLOG(1) << "var name " << var_name;
+      VLOG(3) << "var name " << var_name;
       auto is_sparse = iter.second;
-      VLOG(1) << "is sparse " << is_sparse;
+      VLOG(3) << "is sparse " << is_sparse;
       if (is_sparse) {
         auto splited_var_nums =
             recv_varname_to_ctx_[var_name].splited_var_names.size();
-        VLOG(1) << "splited_var_nums " << splited_var_nums;
+        VLOG(3) << "splited_var_nums " << splited_var_nums;
         ids_send_map_.insert(
             std::pair<std::string, std::vector<std::unordered_set<int64_t>>>(
                 var_name,
                 std::vector<std::unordered_set<int64_t>>{splited_var_nums}));
-        for (size_t i = 0; i < ids_send_map[var_name].size(); i++) {
+        for (size_t i = 0; i < ids_send_map_[var_name].size(); i++) {
           int64_t section = recv_varname_to_ctx_[var_name].sections[i];
-          ids_send_map[var_name][i].reserve(section);
+          ids_send_map_[var_name][i].reserve(section);
         }
       }
     }
