@@ -525,6 +525,7 @@ void GeoSgdCommunicator::Send(const std::string &var_name,
 void GeoSgdCommunicator::Send(const std::vector<std::string> &sparse_var_names,
                               const std::vector<std::string> &sparse_var_tables,
                               const framework::Scope &scope) {
+  if (FLAGS_communicator_fake_rpc) return;
   // SparseIdsVec = std::unoredered_map<std::string,
   // std::vector<std::vector<int64_t>>>
   std::shared_ptr<SparseIdsVec> ids_vec = std::make_shared<SparseIdsVec>();
