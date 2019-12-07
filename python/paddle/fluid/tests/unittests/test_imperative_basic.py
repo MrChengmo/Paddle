@@ -177,30 +177,6 @@ class SimpleRNN(fluid.Layer):
 
 
 class TestImperative(unittest.TestCase):
-    def test_isinstance(self):
-        var = fluid.layers.data(shape=[1], name='x', dtype='float32')
-        self.assertTrue(isinstance(var, fluid.Variable))
-        with fluid.dygraph.guard():
-            var_base = fluid.dygraph.base.to_variable(np.array([3, 4, 5]))
-            self.assertTrue(isinstance(var_base, core.VarBase))
-            self.assertTrue(isinstance(var_base, fluid.Variable))
-
-    def test_create_VarBase(self):
-        x = np.ones([2, 2], np.float32)
-        y = np.zeros([3, 3], np.float32)
-        with fluid.dygraph.guard():
-            tmp = fluid.core.VarBase(value=x, place=fluid.core.CPUPlace())
-            tmp2 = fluid.core.VarBase(y, fluid.core.CPUPlace())
-            tmp3 = fluid.dygraph.base.to_variable(x)
-            tmp4 = fluid.core.VarBase(y)
-            tmp5 = fluid.core.VarBase(value=x)
-
-            self.assertTrue(np.array_equal(x, tmp.numpy()))
-            self.assertTrue(np.array_equal(y, tmp2.numpy()))
-            self.assertTrue(np.array_equal(x, tmp3.numpy()))
-            self.assertTrue(np.array_equal(y, tmp4.numpy()))
-            self.assertTrue(np.array_equal(x, tmp5.numpy()))
-
     def test_sum_op(self):
         x = np.ones([2, 2], np.float32)
         with fluid.dygraph.guard():
@@ -239,17 +215,17 @@ class TestImperative(unittest.TestCase):
             try:
                 new_variable.numpy()
             except Exception as e:
-                assert type(e) == core.EnforceNotMet
+                assert type(e) == ValueError
 
             try:
                 new_variable.backward()
             except Exception as e:
-                assert type(e) == core.EnforceNotMet
+                assert type(e) == ValueError
 
             try:
                 new_variable.clear_gradient()
             except Exception as e:
-                assert type(e) == core.EnforceNotMet
+                assert type(e) == ValueError
 
     def test_empty_grad(self):
         with fluid.dygraph.guard():
@@ -263,7 +239,7 @@ class TestImperative(unittest.TestCase):
             try:
                 new_var.clear_gradient()
             except Exception as e:
-                assert type(e) == core.EnforceNotMet
+                assert type(e) == ValueError
 
         with fluid.dygraph.guard():
             cur_program = fluid.Program()
@@ -281,7 +257,7 @@ class TestImperative(unittest.TestCase):
             new_var = fluid.dygraph.base.to_variable(x)
             self.assertFalse(new_var.persistable)
             new_var.persistable = True
-            self.assertTrue(new_var.persistable)
+            self.assertFalse(new_var.persistable)
 
     def test_layer(self):
         with fluid.dygraph.guard():

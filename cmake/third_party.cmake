@@ -203,7 +203,6 @@ elseif(${CBLAS_PROVIDER} STREQUAL EXTERN_OPENBLAS)
     list(APPEND third_party_deps extern_openblas)
 endif()
 
-
 if(WITH_MKLDNN)
     include(external/mkldnn)    # download, build, install mkldnn
     list(APPEND third_party_deps extern_mkldnn)
