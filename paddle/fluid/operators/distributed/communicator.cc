@@ -790,6 +790,11 @@ void GeoSgdCommunicator::SendUpdateSparseVars(
     blas.SCAL(row_numel, avg, row_delta.data());
     blas.VADD(row_numel, row_delta.data(), y_val, y_val);
     blas.VCOPY(row_numel, row_delta.data(), z_val);
+    VLOG(1) << "Sparse splited var: " << splited_var_name << " Ids: " << ids
+            << " Training scope[0] " << *x_val << " Training scope[end] "
+            << *(x_val + row_numel) << " Old scope[0] " << *y_val
+            << " Old scope[end] " << *(y_val + row_numel) << " Delta scope[0] "
+            << z_val << " Delta scope[end] " << *(z_val + row_numel);
   }
 
   auto after_run_send_sparse = GetCurrentUS();
@@ -969,6 +974,12 @@ void GeoSgdCommunicator::RecvUpdateSparseVars(
     blas.VSUB(row_numel, z_val, y_val, row_delta.data());
     blas.VADD(row_numel, row_delta.data(), x_val, x_val);
     blas.VCOPY(row_numel, z_val, y_val);
+    VLOG(1) << "Sparse splited var: " << splited_var_name << " Ids: " << ids
+            << " Training scope[0] " << *x_val << " Training scope[end] "
+            << *(x_val + row_numel) << " Old scope[0] " << *y_val
+            << " Old scope[end] " << *(y_val + row_numel)
+            << " Pserver scope[0] " << z_val << " Pserver scope[end] "
+            << *(z_val + row_numel);
   }
 
   auto after_run_update = GetCurrentUS();
