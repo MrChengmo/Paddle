@@ -120,14 +120,14 @@ def var_conv_2d(input,
     padding. Besides, input.dims[1] should be 1. 
 
     .. code-block:: text
-            
+
             If input_channel is 2 and given row lodTensor and col lodTensor as follows:
                 row.lod = [[5, 4]]
                 col.lod = [[6, 7]]
             input is a lodTensor: 
                 input.lod = [[60, 56]]	# where 60 = input_channel * 5 * 6
                 input.dims = [116, 1]	# where 116 = 60 + 56
-            
+
             If set output_channel is 3, filter_size is [3, 3], stride is [1, 1]:
                 output.lod = [[90, 84]] # where 90 = output_channel * [(5-1)/stride + 1] * [(6-1)/stride + 1]
                 output.dims = [174, 1]  # where 174 = 90 + 84
@@ -380,7 +380,7 @@ def tree_conv(nodes_vector,
               name=None):
     """ 
     ${comment}
-    		
+
     Args:
         nodes_vector(${nodes_vector_type}): ${nodes_vector_comment}
         edge_set(${edge_set_type}): ${edge_set_comment}
@@ -513,7 +513,7 @@ def multiclass_nms2(bboxes,
                     name=None):
     """
     **Multiclass NMS2**
-    
+
     This operator is to do multi-class non maximum suppression (NMS) on
     boxes and scores.
     In the NMS step, this operator greedily selects a subset of detection bounding
@@ -788,3 +788,19 @@ def shuffle_batch(x, seed=None):
                  'SeedOut': seed},
         attrs=op_attrs)
     return out
+
+
+def tdm_nce_sample(positive_sample,
+                   tree_layer,
+                   tree_travel,
+                   num_total_classes,
+                   num_neg_samples=1,
+                   sample_batch_size=1,
+                   num_seed=0,
+                   factor=0.75):
+    '''
+    This Op is used in TDM model. Detail: https://github.com/alibaba/x-deeplearning/tree/master/xdl-algorithm-solution/TDM/
+    This Op will sample ['num_neg_samples'] items from all samples except positive sample in every layer of TDM tree. Total number of samples is [`num_total_classes`].
+    '''
+    helper = LayerHelper('tdm_nce_sampler', **locals())
+    out = helper.create_variable_for_type_inference(dtype='int64')
