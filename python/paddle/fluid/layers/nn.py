@@ -24,7 +24,7 @@ import os
 import inspect
 from ..layer_helper import LayerHelper
 from ..initializer import Normal, Constant, NumpyArrayInitializer
-from ..framework import Variable, OpProtoHolder, in_dygraph_mode, dygraph_only, _dygraph_tracer, default_main_program
+from ..framework import Variable, OpProtoHolder, in_dygraph_mode, dygraph_only, _dygraph_tracer, default_main_program, default_startup_program
 from ..dygraph import base
 from ..dygraph import dygraph_utils
 from ..param_attr import ParamAttr
@@ -184,6 +184,7 @@ __all__ = [
     'hard_swish',
     'gather_tree',
     'uniform_random',
+    'nce_sampler',
 ]
 
 
@@ -13865,3 +13866,96 @@ def uniform_random(shape, dtype='float32', min=-1.0, max=1.0, seed=0):
         outputs={"Out": out})
 
     return helper.append_activation(out)
+
+
+def nce_sampler(dict_path,
+                num_total_classes,
+                num_neg_samples=10,
+                seed=0,
+                sample_batch_size=1,
+                factor=0.75):
+    '''
+    This Op will sample `num_neg_samples` items from all samples. Total number of samples is `num_total_classes`.
+    
+    Args:
+        dict_path(string): filepath used to save sample count. i-th line is the count
+            of sample[i].
+        num_total_classes(int): Total number of classes in all samples.
+        num_neg_samples(int): The number of negative classes needed to sample. The default value is 10.
+        seed(int): The seed used in sampler. If it is 0, the sampler will generate a seed randomly.
+        sample_batch_size(int): shape[0] of the output tensor. Every element in output is different. If you need the negative samples is same in one batch, you can set sample_batch_size 1, and then expand the output to shape [batch_size, num_neg_samples].
+        factor(float): factor used to adjuct the distribution of all samples.
+
+    Returns:
+        Variable: A Tensor with the shape [sample_batch_size, num_neg_samples]
+
+    Examples:
+        .. code-block:: python
+
+            import paddle.fluid as fluid
+
+            word_count = [x+1 for x in range(10)]
+            with open("word_count_tmp", 'w') as f:
+                for _ in word_count:
+                    f.write(_)
+                    f.write("\n")
+
+            neg_word = fluid.layers.nce_sampler("word_count_tmp", 10, 2)
+    '''
+    helper = LayerHelper('nce_sampler', **locals())
+    out = helper.create_variable_for_type_inference(dtype='int64')
+    probs_tensor = helper.create_global_variable(
+        dtype='float32', shape=[num_total_classes])
+    alias_tensor = helper.create_global_variable(
+        dtype='int32', shape=[num_total_classes])
+    alias_probs_tensor = helper.create_global_variable(
+        dtype='float32', shape=[num_total_classes])
+
+    helper.set_variable_initializer(probs_tensor, Constant(0.0))
+    helper.set_variable_initializer(alias_tensor, Constant(0))
+    helper.set_variable_initializer(alias_probs_tensor, Constant(0.0))
+
+    block = default_startup_program().global_block()
+    block.append_op(
+        type='nce_sampler',
+        inputs={
+            'CustomDistProbs': probs_tensor,
+            'CustomDistAlias': alias_tensor,
+            'CustomDistAliasProbs': alias_probs_tensor
+        },
+        outputs={
+            'Out': out,
+            'CustomDistProbsInit': probs_tensor,
+            'CustomDistAliasInit': alias_tensor,
+            'CustomDistAliasProbsInit': alias_probs_tensor
+        },
+        attrs={
+            'init_flag': True,
+            'filename': dict_path,
+            'num_total_classes': int(num_total_classes),
+            'num_neg_samples': int(num_neg_samples),
+            'sample_batch_size': int(sample_batch_size),
+            'seed': seed
+        })
+    helper.append_op(
+        type='nce_sampler',
+        inputs={
+            'CustomDistProbs': probs_tensor,
+            'CustomDistAlias': alias_tensor,
+            'CustomDistAliasProbs': alias_probs_tensor
+        },
+        outputs={
+            'Out': out,
+            'CustomDistProbsInit': probs_tensor,
+            'CustomDistAliasInit': alias_tensor,
+            'CustomDistAliasProbsInit': alias_probs_tensor
+        },
+        attrs={
+            'init_flag': False,
+            'filename': dict_path,
+            'num_total_classes': int(num_total_classes),
+            'num_neg_samples': int(num_neg_samples),
+            'sample_batch_size': int(sample_batch_size),
+            'seed': seed
+        })
+    return out
