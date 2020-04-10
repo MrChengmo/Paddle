@@ -16,7 +16,7 @@ from __future__ import print_function
 
 import abc
 
-import paddle.fluid as fluid
+from paddle.fluid.core import CPUPlace
 from paddle.fluid.executor import Executor
 from paddle.fluid.optimizer import SGD
 
@@ -193,7 +193,7 @@ class Fleet(object):
         Returns:
             None
         """
-        self._executor = Executor(fluid.CPUPlace())
+        self._executor = Executor(CPUPlace())
 
         if role_maker and not isinstance(role_maker, RoleMakerBase):
             raise TypeError("role_maker must be an instance of RoleMakerBase")
@@ -275,7 +275,7 @@ class DistributedOptimizer(object):
 
     def __init__(self, optimizer, strategy=None):
         if not isinstance(optimizer, SGD.__bases__) \
-                 and not isinstance(optimizer, OptimizerWithMixedPrecision):
+                and not isinstance(optimizer, OptimizerWithMixedPrecision):
             raise TypeError("optimizer must be an instance of Optimizer")
 
         self._optimizer = optimizer
