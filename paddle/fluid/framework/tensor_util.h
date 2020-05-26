@@ -15,6 +15,7 @@ limitations under the License. */
 #pragma once
 #include <vector>
 #include "paddle/fluid/framework/data_type.h"
+#include "paddle/fluid/framework/dlpack_tensor.h"
 #include "paddle/fluid/framework/eigen.h"
 #include "paddle/fluid/framework/framework.pb.h"
 #include "paddle/fluid/framework/tensor.h"
@@ -71,11 +72,40 @@ void TensorToStream(std::ostream& os, const Tensor& tensor,
                     const platform::DeviceContext& dev_ctx);
 void TensorFromStream(std::istream& is, Tensor* tensor,
                       const platform::DeviceContext& dev_ctx);
+void TensorFromStream(std::istream& is, Tensor* tensor,
+                      const platform::DeviceContext& dev_ctx,
+                      const size_t& seek, const std::vector<int64_t>& shape);
+
+// convert dlpack's DLTensor to tensor
+void TensorFromDLPack(const ::DLTensor& dl_tensor, framework::Tensor* dst);
 
 //
 // The implementation of template functions.
 //
 
+template <typename T>
+void TensorFromArray(const T* src, const size_t& array_size,
+                     const platform::DeviceContext& ctx, Tensor* dst) {
+  auto dst_place = ctx.GetPlace();
+  auto src_ptr = static_cast<const void*>(src);
+  platform::CPUPlace src_place;
+  dst->Resize({static_cast<int64_t>(array_size)});
+  auto dst_ptr = static_cast<void*>(dst->mutable_data<T>(dst_place));
+  auto size = array_size * sizeof(T);
+
+  if (platform::is_cpu_place(dst_place)) {
+    memory::Copy(BOOST_GET_CONST(platform::CPUPlace, dst_place), dst_ptr,
+                 src_place, src_ptr, size);
+  }
+#ifdef PADDLE_WITH_CUDA
+  else if (platform::is_gpu_place(dst_place)) {  // NOLINT
+    memory::Copy(
+        BOOST_GET_CONST(platform::CUDAPlace, dst_place), dst_ptr, src_place,
+        src_ptr, size,
+        reinterpret_cast<const platform::CUDADeviceContext&>(ctx).stream());
+  }
+#endif
+}
 template <typename T>
 void TensorFromVector(const std::vector<T>& src,
                       const platform::DeviceContext& ctx, Tensor* dst) {
@@ -87,14 +117,14 @@ void TensorFromVector(const std::vector<T>& src,
   auto size = src.size() * sizeof(T);
 
   if (platform::is_cpu_place(dst_place)) {
-    memory::Copy(boost::get<platform::CPUPlace>(dst_place), dst_ptr, src_place,
-                 src_ptr, size);
+    memory::Copy(BOOST_GET_CONST(platform::CPUPlace, dst_place), dst_ptr,
+                 src_place, src_ptr, size);
   }
 #ifdef PADDLE_WITH_CUDA
   else if (platform::is_gpu_place(dst_place)) {  // NOLINT
     memory::Copy(
-        boost::get<platform::CUDAPlace>(dst_place), dst_ptr, src_place, src_ptr,
-        size,
+        BOOST_GET_CONST(platform::CUDAPlace, dst_place), dst_ptr, src_place,
+        src_ptr, size,
         reinterpret_cast<const platform::CUDADeviceContext&>(ctx).stream());
   }
 #endif
@@ -124,12 +154,13 @@ void TensorToVector(const Tensor& src, const platform::DeviceContext& ctx,
 
   if (platform::is_cpu_place(src.place())) {
     memory::Copy(dst_place, dst_ptr,
-                 boost::get<platform::CPUPlace>(src.place()), src_ptr, size);
+                 BOOST_GET_CONST(platform::CPUPlace, src.place()), src_ptr,
+                 size);
   }
 #ifdef PADDLE_WITH_CUDA
   else if (platform::is_gpu_place(src.place())) {  // NOLINT
     memory::Copy(
-        dst_place, dst_ptr, boost::get<platform::CUDAPlace>(src.place()),
+        dst_place, dst_ptr, BOOST_GET_CONST(platform::CUDAPlace, src.place()),
         src_ptr, size,
         reinterpret_cast<const platform::CUDADeviceContext&>(ctx).stream());
   }
@@ -147,8 +178,8 @@ void TensorToVector(const Tensor& src, std::vector<T>* dst) {
 
   PADDLE_ENFORCE_EQ(platform::is_cpu_place(src.place()), true);
 
-  memory::Copy(dst_place, dst_ptr, boost::get<platform::CPUPlace>(src.place()),
-               src_ptr, size);
+  memory::Copy(dst_place, dst_ptr,
+               BOOST_GET_CONST(platform::CPUPlace, src.place()), src_ptr, size);
 }
 
 std::ostream& operator<<(std::ostream& os, const Tensor& t);

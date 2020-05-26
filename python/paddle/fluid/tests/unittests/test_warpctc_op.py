@@ -19,6 +19,8 @@ import unittest
 import numpy as np
 from op_test import OpTest
 from test_softmax_op import stable_softmax
+import paddle.fluid as fluid
+from paddle.fluid import Program, program_guard
 
 CUDA_BLOCK_SIZE = 512
 
@@ -178,7 +180,7 @@ class CTCForward(object):
 class TestWarpCTCOp(OpTest):
     def config(self):
         self.batch_size = 4
-        self.num_classes = 8
+        self.num_classes = 12
         self.logits_lod = [[4, 1, 3, 3]]
         self.labels_lod = [[3, 1, 4, 4]]
         self.blank = self.num_classes - 1
@@ -221,11 +223,12 @@ class TestWarpCTCOp(OpTest):
         }
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
     def test_check_grad(self):
         self.outputs['WarpCTCGrad'] = self.gradient
-        self.check_grad(["Logits"], "Loss", max_relative_error=0.007)
+        self.check_grad(
+            ["Logits"], "Loss", max_relative_error=0.007, check_dygraph=False)
 
 
 class TestWarpCTCOpCase1(TestWarpCTCOp):
@@ -303,7 +306,7 @@ class TestWarpCTCOpWithPadding(OpTest):
 
         self.inputs = {
             "Logits": new_logits,
-            "Label": labels,
+            "Label": new_labels,
             "LogitsLength": self.logits_length,
             "LabelLength": self.labels_length
         }
@@ -314,11 +317,12 @@ class TestWarpCTCOpWithPadding(OpTest):
         }
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
     def test_check_grad(self):
         self.outputs['WarpCTCGrad'] = self.gradient
-        self.check_grad(["Logits"], "Loss", max_relative_error=0.007)
+        self.check_grad(
+            ["Logits"], "Loss", max_relative_error=0.007, check_dygraph=False)
 
 
 class TestWarpCTCOpWithPaddingCase1(TestWarpCTCOpWithPadding):
@@ -331,6 +335,58 @@ class TestWarpCTCOpWithPaddingCase1(TestWarpCTCOpWithPadding):
         self.labels_length = np.array([3, 1, 4, 4], dtype=np.int64)
         self.blank = 0
         self.norm_by_times = False
+
+
+class TestWarpCTCOpError(unittest.TestCase):
+    def test_errors(self):
+        with program_guard(Program(), Program()):
+            logits = fluid.data(
+                name='logits', shape=[5, 16, 6], dtype='float32')
+            logits_length = fluid.data(
+                name='logits_length', shape=[None], dtype='int64')
+            label = fluid.data(name='label', shape=[16, 3], dtype='int32')
+            label_length = fluid.data(
+                name='labels_length', shape=[None], dtype='int64')
+
+            def test_logits_Variable():
+                logits_data = np.random.rand(5, 16, 6).astype("float32")
+                fluid.layers.warpctc(
+                    input=logits_data,
+                    label=label,
+                    input_length=logits_length,
+                    label_length=label_length)
+
+            self.assertRaises(TypeError, test_logits_Variable)
+
+            def test_label_Variable():
+                label_data = np.random.randint(0, 5, [5, 1]).astype("int32")
+                fluid.layers.warpctc(
+                    input=logits,
+                    label=label_data,
+                    input_length=logits_length,
+                    label_length=label_length)
+
+            self.assertRaises(TypeError, test_label_Variable)
+
+            def test_logits_len_Variable():
+                logits_length_data = np.array([5] * 16).astype("int64")
+                fluid.layers.warpctc(
+                    input=logits,
+                    label=label,
+                    input_length=logits_length_data,
+                    label_length=label_length)
+
+            self.assertRaises(TypeError, test_logits_len_Variable)
+
+            def test_label_len_Variable():
+                label_length_data = np.array([3] * 16).astype("int64")
+                fluid.layers.warpctc(
+                    input=logits,
+                    label=label,
+                    input_length=logits_length,
+                    label_length=label_length_data)
+
+            self.assertRaises(TypeError, test_label_len_Variable)
 
 
 if __name__ == "__main__":

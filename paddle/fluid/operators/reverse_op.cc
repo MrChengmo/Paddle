@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "paddle/fluid/operators/reverse_op.h"
+#include <memory>
 #include <vector>
 
 namespace paddle {
@@ -23,14 +24,28 @@ class ReverseOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext* ctx) const override {
-    PADDLE_ENFORCE(ctx->HasInput("X"), "Input(X) should not be null");
-    PADDLE_ENFORCE(ctx->HasOutput("Out"), "Output(Out) should not be null");
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("X"), true,
+        platform::errors::InvalidArgument("Input(X) should not be null"));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasOutput("Out"), true,
+        platform::errors::InvalidArgument("Output(Out) should not be null"));
     const auto& x_dims = ctx->GetInputDim("X");
     const auto& axis = ctx->Attrs().Get<std::vector<int>>("axis");
-    PADDLE_ENFORCE(!axis.empty(), "'axis' can not be empty.");
+    PADDLE_ENFORCE_NE(axis.empty(), true, platform::errors::InvalidArgument(
+                                              "'axis' can not be empty."));
     for (int a : axis) {
       PADDLE_ENFORCE_LT(a, x_dims.size(),
-                        "The axis must be less than input tensor's rank.");
+                        paddle::platform::errors::OutOfRange(
+                            "The axis must be less than input tensor's rank. "
+                            "but got %d >= %d",
+                            a, x_dims.size()));
+      PADDLE_ENFORCE_GE(
+          a, -x_dims.size(),
+          paddle::platform::errors::OutOfRange(
+              "The axis must be greater than the negative number of "
+              "input tensor's rank, but got %d < %d",
+              a, -x_dims.size()));
     }
     ctx->SetOutputDim("Out", x_dims);
   }
@@ -77,17 +92,16 @@ class ReverseOpMaker : public framework::OpProtoAndCheckerMaker {
   }
 };
 
-class ReverseGradMaker : public framework::SingleGradOpDescMaker {
+template <typename T>
+class ReverseGradMaker : public framework::SingleGradOpMaker<T> {
  public:
-  using framework::SingleGradOpDescMaker::SingleGradOpDescMaker;
+  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
 
-  std::unique_ptr<framework::OpDesc> Apply() const override {
-    auto* grad_op = new framework::OpDesc();
+  void Apply(GradOpPtr<T> grad_op) const override {
     grad_op->SetType("reverse");
-    grad_op->SetInput("X", OutputGrad("Out"));
-    grad_op->SetOutput("Out", InputGrad("X"));
-    grad_op->SetAttr("axis", GetAttr("axis"));
-    return std::unique_ptr<framework::OpDesc>(grad_op);
+    grad_op->SetInput("X", this->OutputGrad("Out"));
+    grad_op->SetOutput("Out", this->InputGrad("X"));
+    grad_op->SetAttr("axis", this->GetAttr("axis"));
   }
 };
 
@@ -96,7 +110,8 @@ class ReverseGradMaker : public framework::SingleGradOpDescMaker {
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(reverse, ops::ReverseOp, ops::ReverseOpMaker,
-                  ops::ReverseGradMaker);
+                  ops::ReverseGradMaker<paddle::framework::OpDesc>,
+                  ops::ReverseGradMaker<paddle::imperative::OpBase>);
 REGISTER_OPERATOR(reverse_grad, ops::ReverseOp);
 REGISTER_OP_CPU_KERNEL(
     reverse, ops::ReverseKernel<paddle::platform::CPUDeviceContext, int>,

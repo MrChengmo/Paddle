@@ -45,7 +45,7 @@ class TestOneHotOp(OpTest):
         self.outputs = {'Out': (out, x_lod)}
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
 
 class TestOneHotOp_attr(OpTest):
@@ -68,7 +68,7 @@ class TestOneHotOp_attr(OpTest):
         self.outputs = {'Out': (out, x_lod)}
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
 
 class TestOneHotOp_default_dtype(OpTest):
@@ -92,7 +92,7 @@ class TestOneHotOp_default_dtype(OpTest):
         self.outputs = {'Out': (out, x_lod)}
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
 
 class TestOneHotOp_default_dtype_attr(OpTest):
@@ -115,7 +115,7 @@ class TestOneHotOp_default_dtype_attr(OpTest):
         self.outputs = {'Out': (out, x_lod)}
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
 
 class TestOneHotOp_out_of_range(OpTest):
@@ -134,10 +134,10 @@ class TestOneHotOp_out_of_range(OpTest):
         self.outputs = {'Out': (out, x_lod)}
 
     def test_check_output(self):
-        self.check_output()
+        self.check_output(check_dygraph=False)
 
 
-class TestOneHotOp_exception(OpTest):
+class TestOneHotOp_exception(unittest.TestCase):
     def setUp(self):
         self.op_type = 'one_hot'
         self.depth = 10
@@ -173,6 +173,30 @@ class TestOneHotOp_exception(OpTest):
                         return_numpy=False)
 
             self.assertRaises(core.EnforceNotMet, run)
+
+
+class TestOneHotOpError(unittest.TestCase):
+    def test_errors(self):
+        with program_guard(Program(), Program()):
+            # the input must be Variable
+            in_w = np.random.random((4, 1)).astype("int32")
+            self.assertRaises(TypeError, fluid.layers.one_hot, in_w)
+            # the input must be int32 or int 64
+            in_w2 = fluid.layers.data(
+                name="in_w2",
+                shape=[4, 1],
+                append_batch_size=False,
+                dtype="float32")
+            self.assertRaises(TypeError, fluid.layers.one_hot, in_w2)
+            # the depth must be int, long or Variable
+            in_r = fluid.layers.data(
+                name="in_r",
+                shape=[4, 1],
+                append_batch_size=False,
+                dtype="int32")
+            depth_w = np.array([4])
+            self.assertRaises(TypeError, fluid.layers.one_hot, in_r, 4.1)
+            self.assertRaises(TypeError, fluid.layers.one_hot, in_r, depth_w)
 
 
 if __name__ == '__main__':

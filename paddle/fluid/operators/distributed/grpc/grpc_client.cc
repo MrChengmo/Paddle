@@ -256,17 +256,23 @@ VarHandlePtr GRPCClient::AsyncPrefetchVar(const std::string& ep,
 
   const std::string method = kPrefetchRPC;
   int retry_times_ = 0;
-
+  VLOG(3) << "AsyncPrefetchVar Begin";
   while (true) {
+    VLOG(3) << "AsyncPrefetchVar: GetProcessor Begin";
     GetProcessor* s = new GetProcessor(ch);
+    VLOG(3) << "AsyncPrefetchVar: VarHandle Begin";
     VarHandlePtr h(new VarHandle(ep, method, out_var_name_val, p_ctx, p_scope));
+    VLOG(3) << "AsyncPrefetchVar: Prepare Begin";
     s->Prepare(h, time_out);
 
     framework::AsyncIO([in_var_name_val, out_var_name_val, ep_val, p_scope,
                         p_ctx, s, method, h, table_name_val, this] {
+      VLOG(3) << "AsyncPrefetchVar: AsyncIO Begin";
+      VLOG(3) << "AsyncIO: FindVar Begin";
       auto* var = p_scope->FindVar(in_var_name_val);
 
       ::grpc::ByteBuffer req;
+      VLOG(3) << "AsyncIO: SerializeToByteBuffer Begin";
       SerializeToByteBuffer(in_var_name_val, var, *p_ctx, &req,
                             out_var_name_val, 0, table_name_val);
 
@@ -276,10 +282,11 @@ VarHandlePtr GRPCClient::AsyncPrefetchVar(const std::string& ep,
       s->response_call_back_ = ProcGetResponse;
 
       platform::RecordRPCEvent record_event(method);
-
+      VLOG(3) << "AsyncIO: PrepareUnaryCall Begin";
       auto call = s->stub_g_.PrepareUnaryCall(
           s->context_.get(), "/sendrecv.SendRecvService/PrefetchVariable", req,
           &cq_);
+      VLOG(3) << "AsyncIO: StartCall Begin";
       call->StartCall();
       call->Finish(&s->reply_, &s->status_, static_cast<void*>(s));
 
@@ -429,6 +436,49 @@ VarHandlePtr GRPCClient::AsyncCheckpointNotify(const std::string& ep,
 
   auto rpc = s->stub_->AsyncCheckpointNotify(s->context_.get(), req, &cq_);
   rpc->Finish(&s->reply_, &s->status_, reinterpret_cast<void*>(s));
+  req_count_++;
+
+  if (UNLIKELY(platform::IsProfileEnabled())) {
+    h->Wait();
+  }
+
+  return h;
+}
+
+VarHandlePtr GRPCClient::AsyncDistributeNotify(
+    const std::string& ep, const platform::DeviceContext& ctx,
+    const framework::Scope& scope, const std::string& var_name,
+    int64_t time_out) {
+  const platform::DeviceContext* p_ctx = &ctx;
+  const std::string ep_val = ep;
+  const std::string var_name_val = var_name;
+  const framework::Scope* p_scope = &scope;
+  const auto ch = GetChannel(ep_val);
+  const std::string method = kRequestNotify;
+
+  SendProcessor* s = new SendProcessor(ch);
+  VarHandlePtr h(new VarHandle(ep, method, var_name_val, p_ctx, p_scope));
+  s->Prepare(h, time_out);
+
+  framework::AsyncIO([var_name_val, p_scope, p_ctx, s, method, h, this] {
+    auto* var = p_scope->FindVar(var_name_val);
+
+    ::grpc::ByteBuffer req;
+    SerializeToByteBuffer(var_name_val, var, *p_ctx, &req, "", trainer_id_);
+
+    VLOG(3) << s->GetVarHandlePtr()->String() << " begin";
+
+    // stub context
+    s->response_call_back_ = nullptr;
+
+    platform::RecordRPCEvent record_event(method);
+
+    auto call = s->stub_g_.PrepareUnaryCall(
+        s->context_.get(), "/sendrecv.SendRecvService/DistributeNotify", req,
+        &cq_);
+    call->StartCall();
+    call->Finish(&s->reply_, &s->status_, reinterpret_cast<void*>(s));
+  });
   req_count_++;
 
   if (UNLIKELY(platform::IsProfileEnabled())) {

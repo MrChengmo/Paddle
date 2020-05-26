@@ -57,7 +57,13 @@ class PrefetchOp : public framework::OperatorBase {
       }
     }
     for (size_t i = 0; i < rets.size(); i++) {
-      PADDLE_ENFORCE(rets[i]->Wait(), "internal error in RPCClient");
+      PADDLE_ENFORCE_EQ(
+          rets[i]->Wait(), true,
+          platform::errors::Fatal(
+              "It's a fatal error of RPCClient that RPCClient can't "
+              "get the wait result. It may happen when trainers or "
+              "parameter servers exit un normally or the network "
+              "issue!"));
     }
   }
 };
@@ -95,6 +101,8 @@ class PrefetchOpShapeInference : public framework::InferShapeBase {
 
 namespace ops = paddle::operators;
 
-REGISTER_OPERATOR(prefetch, ops::PrefetchOp,
-                  paddle::framework::EmptyGradOpMaker, ops::PrefetchOpMaker,
-                  ops::PrefetchOpShapeInference);
+REGISTER_OPERATOR(
+    prefetch, ops::PrefetchOp,
+    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
+    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>,
+    ops::PrefetchOpMaker, ops::PrefetchOpShapeInference);

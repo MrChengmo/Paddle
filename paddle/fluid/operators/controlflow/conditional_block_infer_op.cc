@@ -51,7 +51,9 @@ class ConditionalBlockInferOp : public ConditionalOp {
 
     if (need_run) {
       auto *scope_var = scope.FindVar(Output("Scope"));
-      PADDLE_ENFORCE(scope_var != nullptr, "Must set scope");
+      PADDLE_ENFORCE_NOT_NULL(
+          scope_var, platform::errors::PreconditionNotMet(
+                         "Scope must be set in ConditionalBlockInferOp."));
       auto *scopes = scope_var->GetMutable<std::vector<framework::Scope *>>();
       scopes->resize(1);
       scopes->front() = &scope.NewScope();
@@ -69,6 +71,8 @@ class ConditionalBlockInferOp : public ConditionalOp {
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(conditional_block_infer, ops::ConditionalBlockInferOp,
-                  ops::ConditionalBlockOpProtoMaker,
-                  paddle::framework::EmptyGradOpMaker);
+REGISTER_OPERATOR(
+    conditional_block_infer, ops::ConditionalBlockInferOp,
+    ops::ConditionalBlockOpProtoMaker,
+    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
+    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);

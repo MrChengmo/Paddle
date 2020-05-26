@@ -79,23 +79,71 @@ inline void StridedNumelCopyWithAxis(const platform::DeviceContext& ctx,
                         "except the specified axis.");
     }
   }
-
+  VLOG(1) << "StridedNumelCopyWithAxis CUDA Copy before: " << before
+          << " dst_after: " << dst_after << " src_after: " << src_after;
   for (int64_t i = 0; i < before; ++i) {
     if (platform::is_cpu_place(place)) {
-      auto& cpu_place = boost::get<platform::CPUPlace>(place);
+      VLOG(1) << "StridedNumelCopyWithAxis CPU Copy Begin";
+      auto& cpu_place = BOOST_GET_CONST(platform::CPUPlace, place);
       memory::Copy(cpu_place, dst + i * dst_after, cpu_place,
                    src + i * src_after, sizeof(T) * size);
     } else {
 #ifdef PADDLE_WITH_CUDA
-      auto& gpu_place = boost::get<platform::CUDAPlace>(place);
+      VLOG(1) << "StridedNumelCopyWithAxis CUDA Copy Begin";
+      VLOG(1) << "StridedNumelCopyWithAxis CUDA Copy i: " << i;
+      auto& gpu_place = BOOST_GET_CONST(platform::CUDAPlace, place);
       auto& cuda_ctx =
           reinterpret_cast<const platform::CUDADeviceContext&>(ctx);
+
       memory::Copy(gpu_place, dst + i * dst_after, gpu_place,
                    src + i * src_after, sizeof(T) * size, cuda_ctx.stream());
 #else
       PADDLE_THROW("Paddle is not compiled with GPU");
 #endif
     }
+  }
+}
+
+template <typename T>
+inline void StridedNumelCopyWithAxis(platform::CUDADeviceContext* dst_ctx,
+                                     const platform::DeviceContext& src_ctx,
+                                     int64_t axis, T* dst,
+                                     const framework::DDim& dst_stride_numel,
+                                     const T* src,
+                                     const framework::DDim& src_stride_numel,
+                                     int64_t size) {
+  int64_t before = dst_stride_numel[0] / dst_stride_numel[axis];
+  int64_t src_after = src_stride_numel[axis];
+  int64_t dst_after = dst_stride_numel[axis];
+
+  auto dst_place = dst_ctx->GetPlace();
+  auto src_place = src_ctx.GetPlace();
+  VLOG(1) << "StridedNumelCopyWithAxis CPU<->CUDA Copy before: " << before
+          << " dst_after: " << dst_after << " src_after: " << src_after;
+  PADDLE_ENFORCE_EQ(src_stride_numel.size(), dst_stride_numel.size(),
+                    "src and dst tensor should have the same dims size.");
+
+  for (int64_t i = 0; i < axis; ++i) {
+    if (i < axis) {
+      PADDLE_ENFORCE_EQ(src_stride_numel[i] / src_stride_numel[axis],
+                        dst_stride_numel[i] / dst_stride_numel[axis],
+                        "src and dst should have the same elements "
+                        "except the specified axis.");
+    } else if (i == axis) {
+      continue;
+    } else {
+      PADDLE_ENFORCE_EQ(src_stride_numel[i], dst_stride_numel[i],
+                        "src and dst should have the same elements "
+                        "except the specified axis.");
+    }
+  }
+
+  for (int64_t i = 0; i < before; ++i) {
+    VLOG(1) << "StridedNumelCopyWithAxis CPU<->GPU Copy";
+    auto& cpu_place = BOOST_GET_CONST(platform::CPUPlace, src_place);
+    auto& gpu_place = BOOST_GET_CONST(platform::CUDAPlace, dst_place);
+    memory::Copy(gpu_place, dst + i * dst_after, cpu_place, src + i * src_after,
+                 sizeof(T) * size, dst_ctx->stream());
   }
 }
 

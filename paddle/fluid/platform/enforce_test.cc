@@ -16,6 +16,7 @@ limitations under the License. */
 #include <set>
 
 #include "gtest/gtest.h"
+#include "paddle/fluid/framework/type_defs.h"
 #include "paddle/fluid/platform/enforce.h"
 
 TEST(ENFORCE, OK) {
@@ -29,7 +30,7 @@ TEST(ENFORCE, FAILED) {
   bool caught_exception = false;
   try {
     PADDLE_ENFORCE(false, "Enforce is not ok %d at all", 123);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Enforce is not ok 123 at all") !=
@@ -40,7 +41,7 @@ TEST(ENFORCE, FAILED) {
   caught_exception = false;
   try {
     PADDLE_ENFORCE(false, "Enforce is not ok at all");
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Enforce is not ok at all") != std::string::npos);
@@ -50,9 +51,9 @@ TEST(ENFORCE, FAILED) {
   caught_exception = false;
   try {
     PADDLE_ENFORCE(false);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
-    EXPECT_NE(std::string(error.what()).find("  at "), 0);
+    EXPECT_NE(std::string(error.what()).find("  at "), 0UL);
   }
   EXPECT_TRUE(caught_exception);
 }
@@ -69,8 +70,9 @@ TEST(ENFORCE_EQ, NO_EXTRA_MSG_FAIL) {
   int a = 2;
   bool caught_exception = false;
   try {
-    PADDLE_ENFORCE_EQ(a, 1 + 3);
-  } catch (paddle::platform::EnforceNotMet error) {
+    PADDLE_ENFORCE_EQ(a, 1 + 3, paddle::platform::errors::InvalidArgument(
+                                    "the result is not equal correct result."));
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected a == 1 + 3, but received a:2 != 1 "
@@ -83,12 +85,14 @@ TEST(ENFORCE_EQ, EXTRA_MSG_FAIL) {
   int a = 2;
   bool caught_exception = false;
   try {
-    PADDLE_ENFORCE_EQ(a, 1 + 3, "%s size not match", "their");
-  } catch (paddle::platform::EnforceNotMet error) {
+    PADDLE_ENFORCE_EQ(a, 1 + 3, paddle::platform::errors::InvalidArgument(
+                                    "the result is not equal correct result."));
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
-    EXPECT_TRUE(ex_msg.find("Expected a == 1 + 3, but received a:2 != 1 + "
-                            "3:4.\ntheir size not match") != std::string::npos);
+    EXPECT_TRUE(
+        ex_msg.find("Expected a == 1 + 3, but received a:2 != 1 + 3:4.") !=
+        std::string::npos);
   }
   EXPECT_TRUE(caught_exception);
 }
@@ -103,7 +107,7 @@ TEST(ENFORCE_NE, FAIL) {
   try {
     // 2UL here to check data type compatible
     PADDLE_ENFORCE_NE(1.0, 1UL);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected 1.0 != 1UL, but "
@@ -117,7 +121,7 @@ TEST(ENFORCE_GT, FAIL) {
   bool caught_exception = false;
   try {
     PADDLE_ENFORCE_GT(1, 2);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected 1 > 2, but received 1:1 <= 2:2.") !=
@@ -135,7 +139,7 @@ TEST(ENFORCE_GE, FAIL) {
   bool caught_exception = false;
   try {
     PADDLE_ENFORCE_GE(1, 2);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected 1 >= 2, but received 1:1 < 2:2.") !=
@@ -155,7 +159,7 @@ TEST(ENFORCE_LE, FAIL) {
   bool caught_exception = false;
   try {
     PADDLE_ENFORCE_GT(1, 2);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected 1 > 2, but received 1:1 <= 2:2.") !=
@@ -173,7 +177,7 @@ TEST(ENFORCE_LT, FAIL) {
   bool caught_exception = false;
   try {
     PADDLE_ENFORCE_LT(1UL, 0.12);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("Expected 1UL < 0.12, but "
@@ -193,7 +197,7 @@ TEST(ENFORCE_NOT_NULL, FAIL) {
   try {
     int* a = nullptr;
     PADDLE_ENFORCE_NOT_NULL(a);
-  } catch (paddle::platform::EnforceNotMet error) {
+  } catch (paddle::platform::EnforceNotMet& error) {
     caught_exception = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("a should not be null") != std::string::npos);
@@ -247,7 +251,7 @@ TEST(EOF_EXCEPTION, THROW_EOF) {
   bool caught_eof = false;
   try {
     PADDLE_THROW_EOF();
-  } catch (paddle::platform::EOFException error) {
+  } catch (paddle::platform::EOFException& error) {
     caught_eof = true;
     std::string ex_msg = error.what();
     EXPECT_TRUE(ex_msg.find("There is no next data.") != std::string::npos);
@@ -258,15 +262,14 @@ TEST(EOF_EXCEPTION, THROW_EOF) {
 #ifdef PADDLE_WITH_CUDA
 template <typename T>
 bool CheckCudaStatusSuccess(T value, const std::string& msg = "success") {
-  PADDLE_ENFORCE_CUDA_SUCCESS(value, msg);
+  PADDLE_ENFORCE_CUDA_SUCCESS(value);
   return true;
 }
 
 template <typename T>
-bool CheckCudaStatusFailure(
-    T value, const std::string& msg = "self-defined cuda status failed") {
+bool CheckCudaStatusFailure(T value, const std::string& msg) {
   try {
-    PADDLE_ENFORCE_CUDA_SUCCESS(value, msg);
+    PADDLE_ENFORCE_CUDA_SUCCESS(value);
     return false;
   } catch (paddle::platform::EnforceNotMet& error) {
     std::string ex_msg = error.what();
@@ -276,24 +279,29 @@ bool CheckCudaStatusFailure(
 
 TEST(enforce, cuda_success) {
   EXPECT_TRUE(CheckCudaStatusSuccess(cudaSuccess));
-  EXPECT_TRUE(CheckCudaStatusFailure(cudaErrorInvalidValue));
-  EXPECT_TRUE(CheckCudaStatusFailure(cudaErrorMemoryAllocation));
+  EXPECT_TRUE(CheckCudaStatusFailure(cudaErrorInvalidValue, "Cuda error"));
+  EXPECT_TRUE(CheckCudaStatusFailure(cudaErrorMemoryAllocation, "Cuda error"));
 
   EXPECT_TRUE(CheckCudaStatusSuccess(CURAND_STATUS_SUCCESS));
-  EXPECT_TRUE(CheckCudaStatusFailure(CURAND_STATUS_VERSION_MISMATCH));
-  EXPECT_TRUE(CheckCudaStatusFailure(CURAND_STATUS_NOT_INITIALIZED));
+  EXPECT_TRUE(
+      CheckCudaStatusFailure(CURAND_STATUS_VERSION_MISMATCH, "Curand error"));
+  EXPECT_TRUE(
+      CheckCudaStatusFailure(CURAND_STATUS_NOT_INITIALIZED, "Curand error"));
 
   EXPECT_TRUE(CheckCudaStatusSuccess(CUDNN_STATUS_SUCCESS));
-  EXPECT_TRUE(CheckCudaStatusFailure(CUDNN_STATUS_NOT_INITIALIZED));
-  EXPECT_TRUE(CheckCudaStatusFailure(CUDNN_STATUS_ALLOC_FAILED));
+  EXPECT_TRUE(
+      CheckCudaStatusFailure(CUDNN_STATUS_NOT_INITIALIZED, "Cudnn error"));
+  EXPECT_TRUE(CheckCudaStatusFailure(CUDNN_STATUS_ALLOC_FAILED, "Cudnn error"));
 
   EXPECT_TRUE(CheckCudaStatusSuccess(CUBLAS_STATUS_SUCCESS));
-  EXPECT_TRUE(CheckCudaStatusFailure(CUBLAS_STATUS_NOT_INITIALIZED));
-  EXPECT_TRUE(CheckCudaStatusFailure(CUBLAS_STATUS_INVALID_VALUE));
-#if !defined(__APPLE__) && !defined(_WIN32)
+  EXPECT_TRUE(
+      CheckCudaStatusFailure(CUBLAS_STATUS_NOT_INITIALIZED, "Cublas error"));
+  EXPECT_TRUE(
+      CheckCudaStatusFailure(CUBLAS_STATUS_INVALID_VALUE, "Cublas error"));
+#if !defined(__APPLE__) && defined(PADDLE_WITH_NCCL)
   EXPECT_TRUE(CheckCudaStatusSuccess(ncclSuccess));
-  EXPECT_TRUE(CheckCudaStatusFailure(ncclUnhandledCudaError));
-  EXPECT_TRUE(CheckCudaStatusFailure(ncclSystemError));
+  EXPECT_TRUE(CheckCudaStatusFailure(ncclUnhandledCudaError, "Nccl error"));
+  EXPECT_TRUE(CheckCudaStatusFailure(ncclSystemError, "Nccl error"));
 #endif
 }
 #endif
@@ -357,4 +365,53 @@ TEST(enforce, cannot_to_string_type) {
   PADDLE_ENFORCE_EQ(list.begin(), list.end());
   list.push_back(4);
   PADDLE_ENFORCE_NE(list.begin(), list.end());
+}
+
+TEST(GET_DATA_SAFELY_MACRO, SUCCESS) {
+  int* a = new int(10);
+  GET_DATA_SAFELY(a, "Input", "X", "dummy");
+}
+
+TEST(GET_DATA_SAFELY_MACRO, FAIL) {
+  bool caught_exception = false;
+  try {
+    int* a = nullptr;
+    GET_DATA_SAFELY(a, "Input", "X", "dummy");
+  } catch (paddle::platform::EnforceNotMet& error) {
+    caught_exception = true;
+  }
+  EXPECT_TRUE(caught_exception);
+}
+
+TEST(OP_INOUT_CHECK_MACRO, SUCCESS) {
+  OP_INOUT_CHECK(true, "Input", "X", "dummy");
+}
+
+TEST(OP_INOUT_CHECK_MACRO, FAIL) {
+  bool caught_exception = false;
+  try {
+    OP_INOUT_CHECK(false, "Input", "X", "dummy");
+  } catch (paddle::platform::EnforceNotMet& error) {
+    caught_exception = true;
+  }
+  EXPECT_TRUE(caught_exception);
+}
+
+TEST(BOOST_GET_SAFELY, SUCCESS) {
+  paddle::framework::Attribute attr;
+  attr = true;
+  bool rlt = BOOST_GET(bool, attr);
+  EXPECT_EQ(rlt, true);
+}
+
+TEST(BOOST_GET_SAFELY, FAIL) {
+  paddle::framework::Attribute attr;
+  attr = true;
+  bool caught_exception = false;
+  try {
+    BOOST_GET(int, attr);
+  } catch (paddle::platform::EnforceNotMet& error) {
+    caught_exception = true;
+  }
+  EXPECT_TRUE(caught_exception);
 }

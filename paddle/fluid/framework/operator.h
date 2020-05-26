@@ -31,10 +31,10 @@ limitations under the License. */
 #include "paddle/fluid/framework/lod_tensor.h"
 #include "paddle/fluid/framework/op_info.h"
 #include "paddle/fluid/framework/op_kernel_type.h"
-#include "paddle/fluid/framework/operator_kernel_configs.h"
 #include "paddle/fluid/framework/scope.h"
 #include "paddle/fluid/framework/selected_rows.h"
 #include "paddle/fluid/framework/tensor.h"
+#include "paddle/fluid/framework/unused_var_check.h"
 #include "paddle/fluid/memory/malloc.h"
 #include "paddle/fluid/platform/device_context.h"
 #include "paddle/fluid/platform/variant.h"
@@ -52,8 +52,8 @@ constexpr char kEmptyVarName[] = "@EMPTY@";
 constexpr char kTempVarName[] = "@TEMP@";
 
 /// If a variable's name has a certain suffix, it means that the
-/// variable is the gradient of another varibale.
-/// e.g. Variable "x@GRAD" is the gradient of varibale "x".
+/// variable is the gradient of another variable.
+/// e.g. Variable "x@GRAD" is the gradient of variable "x".
 constexpr char kGradVarSuffix[] = "@GRAD";
 
 constexpr size_t kGradVarSuffixSize = 5U;
@@ -63,6 +63,9 @@ constexpr char kZeroVarSuffix[] = "@ZERO";
 
 /// Variables with this suffix are the new Gradient.
 constexpr char kNewGradSuffix[] = "@NEWGRAD@";
+
+/// Variables with this suffix are the loaded from pre-train model.
+constexpr char kLoadedVarSuffix[] = "@LOADED";
 
 /// RuntimeContext is used to relate input/output names of Operator with
 /// the corresponding variables in name scope.
@@ -102,7 +105,6 @@ inline std::string GradOriginalVarName(const std::string& grad_var_name) {
   }
 }
 
-proto::VarType::Type GetDataTypeOfVar(const Variable* var);
 const Tensor* GetLoDTensorOrSelectedRowsValueFromVar(const Variable& var);
 Tensor* GetMutableLoDTensorOrSelectedRowsValueFromVar(Variable* var);
 
@@ -155,7 +157,7 @@ class OperatorBase {
   inline const T& Attr(const std::string& name) const {
     PADDLE_ENFORCE(attrs_.find(name) != attrs_.end(),
                    "%s should be in AttributeMap", name);
-    return boost::get<T>(attrs_.at(name));
+    return BOOST_GET_CONST(T, attrs_.at(name));
   }
   const AttributeMap& Attrs() const { return attrs_; }
 
@@ -185,9 +187,15 @@ class OperatorBase {
   virtual std::vector<std::string> OutputVars(bool has_intermediate) const;
 
   void SetIsCalledByExecutor(bool x) { run_by_executor_ = x; }
+
   virtual void RuntimeInferShape(const Scope& scope,
                                  const platform::Place& place,
                                  const RuntimeContext& ctx) const {}
+
+  virtual platform::Place GetExecutionPlace(
+      const platform::Place& place) const {
+    return place;
+  }
 
  protected:
   std::string type_;
@@ -215,60 +223,66 @@ class OperatorBase {
                        const platform::Place& place) const = 0;
 };
 
-#ifdef PADDLE_WITH_CUDA
-using KernelConfig = boost::variant<
-    std::shared_ptr<AlgorithmsCache<cudnnConvolutionFwdAlgo_t>>,
-    std::shared_ptr<AlgorithmsCache<cudnnConvolutionBwdDataAlgo_t>>,
-    std::shared_ptr<AlgorithmsCache<cudnnConvolutionBwdFilterAlgo_t>>>;
-#else
-using KernelConfig = boost::variant<boost::blank>;
-#endif
-
-using OpKernelConfigsMap =
-    std::unordered_map<OpKernelType, std::vector<KernelConfig>,
-                       OpKernelType::Hash>;
-
 class ExecutionContext {
  public:
   ExecutionContext(const OperatorBase& op, const Scope& scope,
                    const platform::DeviceContext& device_context,
-                   const RuntimeContext& ctx,
-                   std::vector<KernelConfig>* configs)
-      : op_(op),
-        scope_(scope),
-        device_context_(device_context),
-        ctx_(ctx),
-        kernel_configs_(configs) {}
+                   const RuntimeContext& ctx)
+      : op_(op), scope_(scope), device_context_(device_context), ctx_(ctx) {}
+  virtual ~ExecutionContext() {}
 
-  const OperatorBase& op() const { return op_; }
+  virtual std::string InputName(const std::string& name) const {
+    return op_.Input(name);
+  }
+  virtual std::vector<std::string> InputNames(const std::string& name) const {
+    return op_.Inputs(name);
+  }
+  virtual std::string OutputName(const std::string& name) const {
+    return op_.Output(name);
+  }
+
+  virtual std::vector<std::string> OutputNames(const std::string& name) const {
+    return op_.Outputs(name);
+  }
+
+  virtual bool HasAttr(const std::string& name) const {
+    return op_.HasAttr(name);
+  }
+  virtual const AttributeMap& Attrs() const { return op_.Attrs(); }
+
+  const std::string& Type() const { return op_.Type(); }
 
   const Scope& scope() const { return scope_; }
 
   template <typename T>
   inline const T& Attr(const std::string& name) const {
-    return op_.Attr<T>(name);
+    return BOOST_GET_CONST(T, GetAttr(name));
   }
 
-  bool HasAttr(const std::string& name) const { return op_.HasAttr(name); }
+  virtual const Attribute& GetAttr(const std::string& name) const {
+    return op_.Attrs().at(name);
+  }
 
-  bool HasInput(const std::string& name) const;
+  virtual bool HasInput(const std::string& name) const;
 
-  bool HasOutput(const std::string& name) const;
+  virtual bool HasOutput(const std::string& name) const;
 
-  size_t InputSize(const std::string& name) const {
+  virtual size_t InputSize(const std::string& name) const {
     return op_.Inputs(name).size();
   }
 
-  size_t OutputSize(const std::string& name) const {
+  virtual size_t OutputSize(const std::string& name) const {
     return op_.Outputs(name).size();
   }
 
-  const Variable* InputVar(const std::string& name) const;
+  virtual const Variable* InputVar(const std::string& name) const;
 
-  Variable* OutputVar(const std::string& name) const;
+  virtual Variable* OutputVar(const std::string& name) const;
 
-  const std::vector<const Variable*> MultiInputVar(
+  virtual const std::vector<Variable*> MultiInputVar(
       const std::string& name) const {
+    LogVarUsageIfUnusedVarCheckEnabled(name);
+
     auto it = ctx_.inputs.find(name);
     if (it == ctx_.inputs.end()) {
       return {};
@@ -276,13 +290,23 @@ class ExecutionContext {
     return {it->second.begin(), it->second.end()};
   }
 
-  std::vector<Variable*> MultiOutputVar(const std::string& name) const {
-    auto names = op_.Outputs(name);
+  virtual std::vector<Variable*> MultiOutputVar(const std::string& name) const {
     auto it = ctx_.outputs.find(name);
     if (it == ctx_.outputs.end()) {
       return {};
     }
     return it->second;
+  }
+
+  virtual std::vector<std::string> InNameList() const {
+    std::vector<std::string> vec_temp;
+    vec_temp.reserve(ctx_.inputs.size());
+
+    for (auto& input : ctx_.inputs) {
+      vec_temp.push_back(input.first);
+    }
+
+    return vec_temp;
   }
 
   template <typename T>
@@ -299,15 +323,16 @@ class ExecutionContext {
 
   template <typename T>
   const std::vector<const T*> MultiInput(const std::string& name) const {
-    auto it = ctx_.inputs.find(name);
-    if (it == ctx_.inputs.end()) {
+    LogVarUsageIfUnusedVarCheckEnabled(name);
+
+    auto vars = MultiInputVar(name);
+    if (vars.size() == 0) {
       return {};
     }
-    const std::vector<Variable*>& vars = it->second;
     std::vector<const T*> res;
     res.reserve(vars.size());
     std::transform(vars.begin(), vars.end(), std::back_inserter(res),
-                   [&](Variable* var) -> const T* {
+                   [&](const Variable* var) -> const T* {
                      return var == nullptr ? nullptr : &var->Get<T>();
                    });
     return res;
@@ -315,17 +340,19 @@ class ExecutionContext {
 
   template <typename T>
   std::vector<T*> MultiOutput(const std::string& name) const {
-    auto it = ctx_.outputs.find(name);
-    if (it == ctx_.outputs.end()) {
+    auto vars = MultiOutputVar(name);
+
+    if (vars.size() == 0) {
       return {};
     }
-    const std::vector<Variable*>& vars = it->second;
+
     std::vector<T*> res;
     res.reserve(vars.size());
     std::transform(vars.begin(), vars.end(), std::back_inserter(res),
                    [&](Variable* var) -> T* {
                      return var == nullptr ? nullptr : var->GetMutable<T>();
                    });
+
     return res;
   }
 
@@ -348,16 +375,6 @@ class ExecutionContext {
   }
 #endif
 
-  //! Get actual name vector for this input.
-  const std::vector<std::string>& Inputs(const std::string& name) const {
-    return op_.Inputs(name);
-  }
-
-  //! Get actual name vector for this output.
-  const std::vector<std::string>& Outputs(const std::string& name) const {
-    return op_.Outputs(name);
-  }
-
   template <typename T, typename DevContext>
   Tensor AllocateTmpTensor(const framework::DDim& dim,
                            const DevContext& dev_ctx) const {
@@ -377,21 +394,15 @@ class ExecutionContext {
     return temp_tensor;
   }
 
-  template <typename T>
-  T& GetKernelConfig(size_t idx) const {
-    PADDLE_ENFORCE(
-        kernel_configs_ && kernel_configs_->size() > static_cast<size_t>(idx),
-        "%s selected kernel doesn't have kernel config %lu <= %lu",
-        op_.Type().c_str(), kernel_configs_->size(), idx);
-    return *boost::get<std::shared_ptr<T>>((*kernel_configs_)[idx]);
-  }
+  const RuntimeContext Context() const { return ctx_; }
+
+  std::string DebugString() const { return op_.DebugString(); }
 
  private:
   const OperatorBase& op_;
   const Scope& scope_;
   const platform::DeviceContext& device_context_;
   const RuntimeContext& ctx_;
-  mutable std::vector<KernelConfig>* kernel_configs_;
 };
 
 template <>
@@ -444,6 +455,11 @@ class OperatorWithKernel : public OperatorBase {
     return g_all_op_kernels;
   }
 
+  bool IsMKLDNNType() const {
+    return ((this->kernel_type_) && (this->kernel_type_->data_layout_ ==
+                                     framework::DataLayout::kMKLDNN));
+  }
+
   bool SupportGPU() const override {
     auto& op_kernels = OperatorWithKernel::AllOpKernels().at(type_);
     return std::any_of(op_kernels.begin(), op_kernels.end(),
@@ -452,16 +468,15 @@ class OperatorWithKernel : public OperatorBase {
                        });
   }
 
-  virtual void InferShape(InferShapeContext* ctx) const {
-    Info().infer_shape_(ctx);
-  }
+  virtual void InferShape(InferShapeContext* ctx) const = 0;
 
   void RuntimeInferShape(const Scope& scope, const platform::Place& place,
                          const RuntimeContext& ctx) const override;
 
-  virtual OpKernelType GetExpectedKernelType(const ExecutionContext& ctx) const;
+  proto::VarType::Type IndicateVarDataType(const ExecutionContext& ctx,
+                                           const std::string& name) const;
 
-  std::vector<KernelConfig>* GetKernelConfig(const OpKernelType& key) const;
+  virtual OpKernelType GetExpectedKernelType(const ExecutionContext& ctx) const;
 
   // change this to public so that in dygraph mode we can call it to check if we
   // need transform data
@@ -469,7 +484,14 @@ class OperatorWithKernel : public OperatorBase {
       const std::string& var_name, const Tensor& tensor,
       const OpKernelType& expected_kernel_type) const;
 
+  platform::Place GetExecutionPlace(
+      const platform::Place& platform) const override {
+    return kernel_type_->place_;
+  }
+
  private:
+  void ParseInputDataType(const ExecutionContext& ctx, const std::string& name,
+                          proto::VarType::Type* type) const;
   // indicate kernel DataType by input data. By default all input data must be
   // same.
   proto::VarType::Type IndicateDataType(const ExecutionContext& ctx) const;
@@ -478,7 +500,8 @@ class OperatorWithKernel : public OperatorBase {
                RuntimeContext* runtime_ctx) const;
 
   /**
-   * Transfer data from scope to a transfered scope. If there is no data need to
+   * Transfer data from scope to a transferred scope. If there is no data need
+   * to
    * be tranfered, it returns nullptr.
    *
    * * transfered_inplace_vars is a output vector.
@@ -496,11 +519,11 @@ class OperatorWithKernel : public OperatorBase {
                     const platform::Place& place) const;
 
  protected:
-  mutable OpKernelConfigsMap kernel_configs_map_;
   mutable std::unique_ptr<OpKernelType> kernel_type_;
   mutable std::unique_ptr<OpKernelFunc> kernel_func_;
   mutable std::unique_ptr<RuntimeContext> runtime_ctx_;
   mutable const Scope* pre_scope_ = nullptr;
+  mutable bool need_prepare_data_ = true;
   mutable bool enable_cache_runtime_context_ = false;
   mutable bool all_kernels_must_compute_runtime_shape_ = false;
   mutable std::mutex cache_update_mutex_;

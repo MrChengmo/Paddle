@@ -2,11 +2,21 @@ if(NOT WITH_GPU)
     return()
 endif()
 
-set(paddle_known_gpu_archs "30 35 50 52 60 61 70")
-set(paddle_known_gpu_archs7 "30 35 50 52")
-set(paddle_known_gpu_archs8 "30 35 50 52 60 61")
-set(paddle_known_gpu_archs9 "30 35 50 52 60 61 70")
-set(paddle_known_gpu_archs10 "30 35 50 52 60 61 70 75")
+
+if (WITH_NV_JETSON)
+  add_definitions(-DWITH_NV_JETSON)
+  set(paddle_known_gpu_archs "53 62 72")
+  set(paddle_known_gpu_archs7 "53")
+  set(paddle_known_gpu_archs8 "53 62")
+  set(paddle_known_gpu_archs9 "53 62")
+  set(paddle_known_gpu_archs10 "53 62 72")
+else()
+  set(paddle_known_gpu_archs "30 35 50 52 60 61 70")
+  set(paddle_known_gpu_archs7 "30 35 50 52")
+  set(paddle_known_gpu_archs8 "30 35 50 52 60 61")
+  set(paddle_known_gpu_archs9 "30 35 50 52 60 61 70")
+  set(paddle_known_gpu_archs10 "30 35 50 52 60 61 70 75")
+endif()
 
 ######################################################################################
 # A function for automatic detection of GPUs installed  (if autodetection is enabled)
@@ -17,7 +27,9 @@ function(detect_installed_gpus out_variable)
     set(cufile ${PROJECT_BINARY_DIR}/detect_cuda_archs.cu)
 
     file(WRITE ${cufile} ""
-      "#include <cstdio>\n"
+      "#include \"stdio.h\"\n"
+      "#include \"cuda.h\"\n"
+      "#include \"cuda_runtime.h\"\n"
       "int main() {\n"
       "  int count = 0;\n"
       "  if (cudaSuccess != cudaGetDeviceCount(&count)) return -1;\n"
@@ -25,12 +37,12 @@ function(detect_installed_gpus out_variable)
       "  for (int device = 0; device < count; ++device) {\n"
       "    cudaDeviceProp prop;\n"
       "    if (cudaSuccess == cudaGetDeviceProperties(&prop, device))\n"
-      "      std::printf(\"%d.%d \", prop.major, prop.minor);\n"
+      "      printf(\"%d.%d \", prop.major, prop.minor);\n"
       "  }\n"
       "  return 0;\n"
       "}\n")
 
-    execute_process(COMMAND "${CUDA_NVCC_EXECUTABLE}" "-ccbin=${CUDA_HOST_COMPILER}"
+    execute_process(COMMAND "${CUDA_NVCC_EXECUTABLE}"
                     "--run" "${cufile}"
                     WORKING_DIRECTORY "${PROJECT_BINARY_DIR}/CMakeFiles/"
                     RESULT_VARIABLE nvcc_res OUTPUT_VARIABLE nvcc_out
@@ -62,7 +74,7 @@ endfunction()
 function(select_nvcc_arch_flags out_variable)
   # List of arch names
   set(archs_names "Kepler" "Maxwell" "Pascal" "Volta" "Turing" "All" "Manual")
-  set(archs_name_default "All")
+  set(archs_name_default "Auto")
   list(APPEND archs_names "Auto")
 
   # set CUDA_ARCH_NAME strings (so it will be seen as dropbox in CMake-Gui)
@@ -73,7 +85,7 @@ function(select_nvcc_arch_flags out_variable)
   # verify CUDA_ARCH_NAME value
   if(NOT ";${archs_names};" MATCHES ";${CUDA_ARCH_NAME};")
     string(REPLACE ";" ", " archs_names "${archs_names}")
-    message(FATAL_ERROR "Only ${archs_names} architeture names are supported.")
+    message(FATAL_ERROR "Only ${archs_names} architectures names are supported.")
   endif()
 
   if(${CUDA_ARCH_NAME} STREQUAL "Manual")
@@ -92,12 +104,24 @@ function(select_nvcc_arch_flags out_variable)
   elseif(${CUDA_ARCH_NAME} STREQUAL "Pascal")
     set(cuda_arch_bin "60 61")
   elseif(${CUDA_ARCH_NAME} STREQUAL "Volta")
+    if (NOT ${CUDA_VERSION} LESS 10.0)
+      add_definitions("-DSUPPORTS_CUDA_FP16")
+    endif()
     set(cuda_arch_bin "70")
   elseif(${CUDA_ARCH_NAME} STREQUAL "Turing")
+    if (NOT ${CUDA_VERSION} LESS 10.0)
+      add_definitions("-DSUPPORTS_CUDA_FP16")
+    endif()
     set(cuda_arch_bin "75")
   elseif(${CUDA_ARCH_NAME} STREQUAL "All")
     set(cuda_arch_bin ${paddle_known_gpu_archs})
   elseif(${CUDA_ARCH_NAME} STREQUAL "Auto")
+    message(STATUS "WARNING: This is just a warning for publishing release.
+      You are building GPU version without supporting different architectures.
+      So the wheel package may fail on other GPU architectures.
+      You can add -DCUDA_ARCH_NAME=All in cmake command
+      to get a full wheel package to resolve this warning.
+      While, this version will still work on local GPU architecture.")
     detect_installed_gpus(cuda_arch_bin)
   else()  # (${CUDA_ARCH_NAME} STREQUAL "Manual")
     set(cuda_arch_bin ${CUDA_ARCH_BIN})
@@ -166,7 +190,7 @@ add_definitions("-DPADDLE_CUDA_BINVER=\"${CUDA_VERSION_MAJOR}${CUDA_VERSION_MINO
 include_directories(${CUDA_INCLUDE_DIRS})
 if(NOT WITH_DSO)
     if(WIN32)
-      set_property(GLOBAL PROPERTY CUDA_MODULES ${CUDNN_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY})
+      set_property(GLOBAL PROPERTY CUDA_MODULES ${CUDNN_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY} ${CUDA_cusolver_LIBRARY})
     endif(WIN32)
 endif(NOT WITH_DSO)
 

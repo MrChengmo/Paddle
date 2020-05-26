@@ -86,7 +86,7 @@ void ParameterRecv<T>::operator()(const RpcContext &rpc_ctx,
     size_t row_offset = 0;
     framework::Tensor *recv_tensor =
         recv_var->GetMutable<framework::LoDTensor>();
-    auto dev_ctx = paddle::platform::CPUDeviceContext();
+
     int64_t recv_numel = 0;
     for (auto &recv_var_name : rpc_ctx.splited_var_names) {
       auto *recv_var = local_scope->FindVar(recv_var_name);
@@ -95,9 +95,24 @@ void ParameterRecv<T>::operator()(const RpcContext &rpc_ctx,
         recv_numel += in.numel();
         auto in_stride = framework::stride_numel(in.dims());
         auto out_stride = framework::stride_numel(recv_tensor->dims());
-        StridedNumelCopyWithAxis<T>(
-            dev_ctx, 0, recv_tensor->data<T>() + output_offset, out_stride,
-            in.data<T>(), in_stride, in_stride[0]);
+        if (platform::is_cpu_place(recv_tensor->place())) {
+          VLOG(1) << "StridedNumelCopyWithAxis CPU Begin";
+          auto cpu_ctx = paddle::platform::CPUDeviceContext();
+          StridedNumelCopyWithAxis<T>(
+              cpu_ctx, 0, recv_tensor->data<T>() + output_offset, out_stride,
+              in.data<T>(), in_stride, in_stride[0]);
+        } else {
+          VLOG(1) << "StridedNumelCopyWithAxis CPU<->GPU Begin";
+          auto cpu_ctx = paddle::platform::CPUDeviceContext();
+          auto *gpu_ctx = reinterpret_cast<platform::CUDADeviceContext *>(
+              platform::DeviceContextPool::Instance().Get(
+                  recv_tensor->place()));
+
+          StridedNumelCopyWithAxis<T>(
+              gpu_ctx, cpu_ctx, 0, recv_tensor->data<T>() + output_offset,
+              out_stride, in.data<T>(), in_stride, in_stride[0]);
+        }
+
         output_offset += in_stride[0];
       } else if (recv_var->IsType<framework::SelectedRows>()) {
         auto &recv_slr = recv_var->Get<framework::SelectedRows>();
@@ -119,7 +134,7 @@ void ParameterRecv<T>::operator()(const RpcContext &rpc_ctx,
                   << sstream.str();
         }
 
-        for (auto i = 0; i < recv_slr.rows().size(); ++i) {
+        for (size_t i = 0; i < recv_slr.rows().size(); ++i) {
           auto row_id = recv_slr.rows()[i] + row_offset;
           PADDLE_ENFORCE_LT(row_id, recv_dims[0]);
           memcpy(recv_tensor->data<T>() + row_id * width,
@@ -148,7 +163,7 @@ void ParameterRecv<T>::operator()(const RpcContext &rpc_ctx,
     std::vector<int64_t> abs_sections =
         ToAbsoluteSection(rpc_ctx.height_sections);
 
-    for (int i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
+    for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
       auto &recv_var_name = rpc_ctx.splited_var_names[i];
       auto *var = local_scope->FindVar(recv_var_name);
       auto *var_slr = var->GetMutable<framework::SelectedRows>();

@@ -39,7 +39,8 @@ set(prefix_path "${THIRD_PARTY_PATH}/install/gflags|${THIRD_PARTY_PATH}/install/
 ExternalProject_Add(
     extern_brpc
     ${EXTERNAL_PROJECT_LOG_ARGS}
-    GIT_REPOSITORY  "https://github.com/apache/incubator-brpc"
+    ${SHALLOW_CLONE}
+    GIT_REPOSITORY  "https://github.com/apache/incubator-brpc.git"
     GIT_TAG         "ad00fe940b4f05225b214131959293bbed8744a0" #rdma branch's head now.
     PREFIX          ${BRPC_SOURCES_DIR}
     UPDATE_COMMAND  ""

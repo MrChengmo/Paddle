@@ -33,6 +33,8 @@ class CPUDropoutKernel : public framework::OpKernel<T> {
  public:
   void Compute(const framework::ExecutionContext& context) const override {
     auto* x = context.Input<Tensor>("X");
+    auto* seed =
+        context.HasInput("Seed") ? context.Input<Tensor>("Seed") : nullptr;
     auto* y = context.Output<Tensor>("Out");
     const auto* x_data = x->data<T>();
     auto* y_data = y->mutable_data<T>(context.GetPlace());
@@ -57,9 +59,14 @@ class CPUDropoutKernel : public framework::OpKernel<T> {
       // Guarantee to use random seed in training.
       std::random_device rnd;
       std::minstd_rand engine;
-      int seed =
-          context.Attr<bool>("fix_seed") ? context.Attr<int>("seed") : rnd();
-      engine.seed(seed);
+      int seed_data;
+      if (seed) {
+        seed_data = *(seed->data<int>());
+      } else {
+        seed_data =
+            context.Attr<bool>("fix_seed") ? context.Attr<int>("seed") : rnd();
+      }
+      engine.seed(seed_data);
 
       std::uniform_real_distribution<float> dist(0, 1);
 
@@ -101,8 +108,9 @@ template <typename DeviceContext, typename T>
 class DropoutGradKernel : public framework::OpKernel<T> {
  public:
   void Compute(const framework::ExecutionContext& context) const override {
-    PADDLE_ENFORCE(!context.Attr<bool>("is_test"),
-                   "GradOp is only callable when is_test is false");
+    PADDLE_ENFORCE_EQ(!context.Attr<bool>("is_test"), true,
+                      platform::errors::PreconditionNotMet(
+                          "GradOp is only callable when is_test is false"));
 
     auto* grad_x = context.Output<Tensor>(framework::GradVarName("X"));
     auto* grad_y = context.Input<Tensor>(framework::GradVarName("Out"));

@@ -27,29 +27,19 @@ class SqueezeOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext *ctx) const override {
-    PADDLE_ENFORCE_EQ(ctx->HasInput("X"), true,
-                      "Input(X) of Squeeze operator should not be null.");
-    PADDLE_ENFORCE_EQ(ctx->HasOutput("Out"), true,
-                      "Output(Out) of Squeeze operator should not be null.");
+    OP_INOUT_CHECK(ctx->HasInput("X"), "Input", "X", "Squeeze");
+    OP_INOUT_CHECK(ctx->HasOutput("Out"), "Output", "Out", "Squeeze");
 
     const auto &x_dims = ctx->GetInputDim("X");
     // Check input tensor dims (<6) Eigen limit.
     PADDLE_ENFORCE_LE(x_dims.size(), 6,
-                      "ShapeError: the dimensions of Input(X) "
-                      "should be in the range of [1, 6] (Eigen limit)."
-                      "But received X's dimensions = %d, X's shape=[%s].",
-                      x_dims.size(), x_dims);
+                      platform::errors::InvalidArgument(
+                          "The dimensions of Input(X) "
+                          "should be in the range of [1, 6] (Eigen limit)."
+                          "But received X's dimensions = %d, X's shape=[%s].",
+                          x_dims.size(), x_dims));
 
     const auto &axes = ctx->Attrs().Get<std::vector<int>>("axes");
-    for (int a : axes) {
-      PADDLE_ENFORCE_LT(
-          a, x_dims.size(),
-          "ShapeError: The squeeze axis should be less than input "
-          "tensor's dimensions. But received axis = %d, input "
-          "tensor's dimensions = %d, input tensor's shape = [%s].",
-          a, x_dims.size(), x_dims);
-    }
-
     auto out_dims = GetOutputShape(axes, x_dims);
     ctx->SetOutputDim("Out", out_dims);
     if (x_dims[0] == out_dims[0]) {
@@ -78,10 +68,18 @@ class SqueezeOp : public framework::OperatorWithKernel {
       for (size_t idx = 0; idx < num_squeeze_dims; ++idx) {
         int current = squeeze_dims[idx] < 0 ? squeeze_dims[idx] + in_dims.size()
                                             : squeeze_dims[idx];
-        PADDLE_ENFORCE_GE(current, 0,
-                          "Invalid axis, the axis should >= 0."
-                          "Current axis is:%d, input tensor's shape = [%s].",
-                          current, in_dims);
+        PADDLE_ENFORCE_GE(
+            current, 0,
+            platform::errors::InvalidArgument(
+                "Each axis in Attr(axes) should be in the range of [%d, %d]"
+                "But current axis is:%d, input tensor's shape = [%s].",
+                -in_dims.size(), in_dims.size() - 1, current, in_dims));
+        PADDLE_ENFORCE_LT(
+            current, in_dims.size(),
+            platform::errors::InvalidArgument(
+                "Each axis in Attr(axes) should be in the range of [%d, %d]"
+                "But current axis is:%d, input tensor's shape = [%s].",
+                -in_dims.size(), in_dims.size() - 1, current, in_dims));
 
         if (!(should_squeeze[current])) {
           ++cnt_squeezed_dims;
@@ -104,8 +102,9 @@ class SqueezeOp : public framework::OperatorWithKernel {
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext &ctx) const override {
-    return framework::OpKernelType(ctx.Input<framework::LoDTensor>("X")->type(),
-                                   ctx.device_context());
+    return framework::OpKernelType(
+        OperatorWithKernel::IndicateVarDataType(ctx, "X"),
+        ctx.device_context());
   }
 };
 
@@ -122,7 +121,8 @@ class SqueezeGradOp : public framework::OperatorWithKernel {
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext &ctx) const override {
-    return framework::OpKernelType(ctx.Input<framework::LoDTensor>("X")->type(),
+    return framework::OpKernelType(OperatorWithKernel::IndicateVarDataType(
+                                       ctx, framework::GradVarName("Out")),
                                    ctx.device_context());
   }
 };
@@ -169,28 +169,19 @@ class Squeeze2Op : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext *ctx) const override {
-    PADDLE_ENFORCE_EQ(ctx->HasInput("X"), true,
-                      "Input(X) of Squeeze operator should not be null.");
-    PADDLE_ENFORCE_EQ(ctx->HasOutput("Out"), true,
-                      "Output(Out) of Squeeze operator should not be null.");
+    OP_INOUT_CHECK(ctx->HasInput("X"), "Input", "X", "Squeeze2");
+    OP_INOUT_CHECK(ctx->HasOutput("Out"), "Output", "Out", "Squeeze2");
 
     const auto &x_dims = ctx->GetInputDim("X");
     // Check input tensor dims (<6) Eigen limit.
     PADDLE_ENFORCE_LE(x_dims.size(), 6,
-                      "ShapeError: the dimensions of Input(X) "
-                      "should be in the range of [1, 6] (Eigen limit)."
-                      "But received X's dimensions = %d, X's shape = [%s].",
-                      x_dims.size(), x_dims);
+                      platform::errors::InvalidArgument(
+                          "The dimensions of Input(X) "
+                          "should be in the range of [1, 6] (Eigen limit)."
+                          "But received X's dimensions = %d, X's shape = [%s].",
+                          x_dims.size(), x_dims));
 
     const auto &axes = ctx->Attrs().Get<std::vector<int>>("axes");
-    for (int a : axes) {
-      PADDLE_ENFORCE_LT(
-          a, x_dims.size(),
-          "ShapeError: The squeeze axis should be less than input "
-          "tensor's dimensions. But received axis = %d, input "
-          "tensor's dimensions = %d, input tensor's shape = [%s].",
-          a, x_dims.size(), x_dims);
-    }
 
     auto out_dims = SqueezeOp::GetOutputShape(axes, x_dims);
     ctx->SetOutputDim("Out", out_dims);
@@ -200,8 +191,8 @@ class Squeeze2Op : public framework::OperatorWithKernel {
       ctx->ShareLoD("X", "Out");
     }
 
-    PADDLE_ENFORCE_EQ(ctx->HasOutput("XShape"), true,
-                      "Output(XShape) of Squeeze operator should not be null.");
+    OP_INOUT_CHECK(ctx->HasOutput("XShape"), "Output", "XShape", "Squeeze2");
+
     std::vector<int64_t> xshape_dims(x_dims.size() + 1);
     xshape_dims[0] = 0;
     for (int i = 0; i < x_dims.size(); ++i) {
@@ -212,15 +203,29 @@ class Squeeze2Op : public framework::OperatorWithKernel {
   }
 };
 
+template <typename T>
+class SqueezeGradOpMaker : public framework::SingleGradOpMaker<T> {
+ public:
+  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
+
+  void Apply(GradOpPtr<T> grad_op) const override {
+    grad_op->SetType("squeeze_grad");
+    grad_op->SetInput("X", this->Input("X"));
+    grad_op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
+    grad_op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
+    grad_op->SetAttrMap(this->Attrs());
+  }
+};
+
 class Squeeze2GradOp : public framework::OperatorWithKernel {
  public:
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext *context) const override {
-    PADDLE_ENFORCE_EQ(context->HasInput("XShape"), true,
-                      "Input(XShape) shouldn't be null.");
-    PADDLE_ENFORCE_EQ(context->HasInput(framework::GradVarName("Out")), true,
-                      "Input(Out@GRAD) shouldn't be null.");
+    OP_INOUT_CHECK(context->HasInput("XShape"), "Input", "XShape",
+                   "Squeeze2Grad");
+    OP_INOUT_CHECK(context->HasInput(framework::GradVarName("Out")), "Input",
+                   framework::GradVarName("Out"), "Squeeze2Grad");
     auto xshape_dims = context->GetInputDim("XShape");
     auto x_dims = framework::slice_ddim(xshape_dims, 1, xshape_dims.size());
     context->SetOutputDim(framework::GradVarName("X"), x_dims);
@@ -230,9 +235,9 @@ class Squeeze2GradOp : public framework::OperatorWithKernel {
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext &ctx) const override {
-    return framework::OpKernelType(
-        ctx.Input<framework::LoDTensor>(framework::GradVarName("Out"))->type(),
-        ctx.device_context());
+    return framework::OpKernelType(OperatorWithKernel::IndicateVarDataType(
+                                       ctx, framework::GradVarName("Out")),
+                                   ctx.device_context());
   }
 };
 
@@ -252,18 +257,17 @@ class Squeeze2OpMaker : public SqueezeOpMaker {
   }
 };
 
-class Squeeze2GradOpMaker : public framework::SingleGradOpDescMaker {
+template <typename T>
+class Squeeze2GradOpMaker : public framework::SingleGradOpMaker<T> {
  public:
-  using framework::SingleGradOpDescMaker::SingleGradOpDescMaker;
+  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
 
-  std::unique_ptr<framework::OpDesc> Apply() const override {
-    auto *grad_op = new framework::OpDesc();
+  void Apply(GradOpPtr<T> grad_op) const override {
     grad_op->SetType("squeeze2_grad");
-    grad_op->SetInput("XShape", Output("XShape"));
-    grad_op->SetInput(framework::GradVarName("Out"), OutputGrad("Out"));
-    grad_op->SetOutput(framework::GradVarName("X"), InputGrad("X"));
-    grad_op->SetAttrMap(Attrs());
-    return std::unique_ptr<framework::OpDesc>(grad_op);
+    grad_op->SetInput("XShape", this->Output("XShape"));
+    grad_op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
+    grad_op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
+    grad_op->SetAttrMap(this->Attrs());
   }
 };
 
@@ -271,17 +275,21 @@ DECLARE_INPLACE_OP_INFERER(SequeezeInplaceInferer, {"X", "Out"});
 DECLARE_INPLACE_OP_INFERER(SequeezeGradInplaceInferer,
                            {framework::GradVarName("Out"),
                             framework::GradVarName("X")});
-
+DECLARE_NO_NEED_BUFFER_VARS_INFERER(SqueezeGradNoNeedBufferVarsInference, "X");
 }  // namespace operators
 }  // namespace paddle
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(squeeze, ops::SqueezeOp, ops::SqueezeOpMaker,
-                  paddle::framework::DefaultGradOpDescMaker<true>);
-REGISTER_OPERATOR(squeeze_grad, ops::SqueezeGradOp);
+                  ops::SqueezeGradOpMaker<paddle::framework::OpDesc>,
+                  ops::SqueezeGradOpMaker<paddle::imperative::OpBase>);
+REGISTER_OPERATOR(squeeze_grad, ops::SqueezeGradOp,
+                  ops::SqueezeGradNoNeedBufferVarsInference);
 
 REGISTER_OPERATOR(squeeze2, ops::Squeeze2Op, ops::Squeeze2OpMaker,
-                  ops::Squeeze2GradOpMaker, ops::SequeezeInplaceInferer);
+                  ops::Squeeze2GradOpMaker<paddle::framework::OpDesc>,
+                  ops::Squeeze2GradOpMaker<paddle::imperative::OpBase>,
+                  ops::SequeezeInplaceInferer);
 REGISTER_OPERATOR(squeeze2_grad, ops::Squeeze2GradOp,
                   ops::SequeezeGradInplaceInferer);
 

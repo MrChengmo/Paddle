@@ -15,7 +15,7 @@
 from __future__ import print_function
 import unittest
 import numpy as np
-from op_test import OpTest
+from op_test import OpTest, skip_check_grad_ci
 import paddle.fluid.core as core
 from paddle.fluid.op import Operator
 import paddle.fluid as fluid
@@ -28,7 +28,7 @@ class ElementwiseMulOp(OpTest):
 
     def setUp(self):
         self.op_type = "elementwise_mul"
-        self.dtype = np.float32
+        self.dtype = np.float64
         self.axis = -1
         self.init_dtype()
         self.init_input_output()
@@ -43,16 +43,29 @@ class ElementwiseMulOp(OpTest):
         self.attrs = {'axis': self.axis, 'use_mkldnn': self.use_mkldnn}
 
     def test_check_output(self):
-        self.check_output()
+        # TODO(wangzhongpu): support mkldnn op in dygraph mode
+        self.check_output(check_dygraph=(self.use_mkldnn == False))
 
     def test_check_grad_normal(self):
-        self.check_grad(['X', 'Y'], 'Out')
+        # TODO(wangzhongpu): support mkldnn op in dygraph mode
+        self.check_grad(
+            ['X', 'Y'], 'Out', check_dygraph=(self.use_mkldnn == False))
 
     def test_check_grad_ingore_x(self):
-        self.check_grad(['Y'], 'Out', no_grad_set=set("X"))
+        # TODO(wangzhongpu): support mkldnn op in dygraph mode
+        self.check_grad(
+            ['Y'],
+            'Out',
+            no_grad_set=set("X"),
+            check_dygraph=(self.use_mkldnn == False))
 
     def test_check_grad_ingore_y(self):
-        self.check_grad(['X'], 'Out', no_grad_set=set('Y'))
+        # TODO(wangzhongpu): support mkldnn op in dygraph mode
+        self.check_grad(
+            ['X'],
+            'Out',
+            no_grad_set=set('Y'),
+            check_dygraph=(self.use_mkldnn == False))
 
     def init_input_output(self):
         self.x = np.random.uniform(0.1, 1, [13, 17]).astype(self.dtype)
@@ -66,31 +79,35 @@ class ElementwiseMulOp(OpTest):
         pass
 
 
+@skip_check_grad_ci(
+    reason="[skip shape check] Use y_shape(1) to test broadcast.")
 class TestElementwiseMulOp_scalar(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4).astype(np.float32),
-            'Y': np.random.rand(1).astype(np.float32)
+            'X': np.random.rand(10, 3, 4).astype(np.float64),
+            'Y': np.random.rand(1).astype(np.float64)
         }
         self.outputs = {'Out': self.inputs['X'] * self.inputs['Y']}
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_Vector(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.random((32, )).astype("float64"),
-            'Y': np.random.random((32, )).astype("float64")
+            'X': np.random.random((100, )).astype("float64"),
+            'Y': np.random.random((100, )).astype("float64")
         }
         self.outputs = {'Out': np.multiply(self.inputs['X'], self.inputs['Y'])}
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_broadcast_0(ElementwiseMulOp):
     def init_input_output(self):
-        self.x = np.random.rand(2, 3, 4).astype(self.dtype)
-        self.y = np.random.rand(2).astype(self.dtype)
-        self.out = self.x * self.y.reshape(2, 1, 1)
+        self.x = np.random.rand(100, 2, 3).astype(self.dtype)
+        self.y = np.random.rand(100).astype(self.dtype)
+        self.out = self.x * self.y.reshape(100, 1, 1)
 
     def init_axis(self):
         self.axis = 0
@@ -100,69 +117,114 @@ class TestElementwiseMulOp_broadcast_1(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4).astype(np.float64),
-            'Y': np.random.rand(3).astype(np.float64)
+            'X': np.random.rand(2, 100, 3).astype(np.float64),
+            'Y': np.random.rand(100).astype(np.float64)
         }
 
         self.attrs = {'axis': 1}
         self.outputs = {
-            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 3, 1)
+            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 100, 1)
         }
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_broadcast_2(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4).astype(np.float64),
-            'Y': np.random.rand(4).astype(np.float64)
+            'X': np.random.rand(2, 3, 100).astype(np.float64),
+            'Y': np.random.rand(100).astype(np.float64)
         }
 
         self.outputs = {
-            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 1, 4)
+            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 1, 100)
         }
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_broadcast_3(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4, 5).astype(np.float64),
-            'Y': np.random.rand(3, 4).astype(np.float64)
+            'X': np.random.rand(2, 10, 12, 3).astype(np.float64),
+            'Y': np.random.rand(10, 12).astype(np.float64)
         }
 
         self.attrs = {'axis': 1}
         self.outputs = {
-            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 3, 4, 1)
+            'Out': self.inputs['X'] * self.inputs['Y'].reshape(1, 10, 12, 1)
         }
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_broadcast_4(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4).astype(np.float64),
-            'Y': np.random.rand(2, 1, 4).astype(np.float64)
+            'X': np.random.rand(10, 2, 11).astype(np.float64),
+            'Y': np.random.rand(10, 1, 11).astype(np.float64)
         }
         self.outputs = {'Out': self.inputs['X'] * self.inputs['Y']}
+        self.init_kernel_type()
 
 
 class TestElementwiseMulOp_broadcast_5(ElementwiseMulOp):
     def setUp(self):
         self.op_type = "elementwise_mul"
         self.inputs = {
-            'X': np.random.rand(2, 3, 4, 5).astype(np.float64),
-            'Y': np.random.rand(2, 3, 1, 5).astype(np.float64)
+            'X': np.random.rand(10, 4, 2, 3).astype(np.float64),
+            'Y': np.random.rand(10, 4, 1, 3).astype(np.float64)
         }
         self.outputs = {'Out': self.inputs['X'] * self.inputs['Y']}
+        self.init_kernel_type()
 
 
+@unittest.skipIf(not core.is_compiled_with_cuda(),
+                 "core is not compiled with CUDA")
 class TestElementwiseMulOpFp16(ElementwiseMulOp):
     def init_dtype(self):
         self.dtype = np.float16
 
 
-class TestElementwiseMulOpError(OpTest):
+class TestElementwiseMulOp_commonuse_1(ElementwiseMulOp):
+    def setUp(self):
+        self.op_type = "elementwise_mul"
+        self.inputs = {
+            'X': np.random.rand(2, 3, 100).astype(np.float64),
+            'Y': np.random.rand(1, 1, 100).astype(np.float64)
+        }
+        self.outputs = {'Out': self.inputs['X'] * self.inputs['Y']}
+        self.init_kernel_type()
+
+
+class TestElementwiseMulOp_commonuse_2(ElementwiseMulOp):
+    def setUp(self):
+        self.op_type = "elementwise_mul"
+        self.inputs = {
+            'X': np.random.rand(30, 3, 1, 5).astype(np.float64),
+            'Y': np.random.rand(30, 1, 4, 1).astype(np.float64)
+        }
+        self.outputs = {'Out': self.inputs['X'] * self.inputs['Y']}
+        self.init_kernel_type()
+
+
+class TestElementwiseMulOp_xsize_lessthan_ysize(ElementwiseMulOp):
+    def setUp(self):
+        self.op_type = "elementwise_mul"
+        self.inputs = {
+            'X': np.random.rand(10, 10).astype(np.float64),
+            'Y': np.random.rand(2, 2, 10, 10).astype(np.float64)
+        }
+
+        self.attrs = {'axis': 2}
+
+        self.outputs = {
+            'Out': self.inputs['X'].reshape(1, 1, 10, 10) * self.inputs['Y']
+        }
+        self.init_kernel_type()
+
+
+class TestElementwiseMulOpError(unittest.TestCase):
     def test_errors(self):
         with program_guard(Program(), Program()):
             # the input of elementwise_mul must be Variable.

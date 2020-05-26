@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-#ifdef PADDLE_WITH_CUDA
+#ifdef PADDLE_WITH_NCCL
 #include <nccl.h>
 #endif
 #include <memory>
@@ -24,6 +24,8 @@ limitations under the License. */
 #include "paddle/fluid/platform/port.h"
 
 DEFINE_bool(rpc_disable_reuse_port, false, "Disable SO_REUSEPORT or not.");
+DEFINE_int32(rpc_retry_bind_port, 3,
+             "Retry to bind the address if address is already used.");
 
 namespace paddle {
 namespace operators {
@@ -33,38 +35,45 @@ using VarMsg = sendrecv::VariableMessage;
 
 static TensorPayload GetCommunicationAllocationFromTensor(
     const platform::DeviceContext& ctx, const framework::Tensor& tensor) {
-  if (is_gpu_place(ctx.GetPlace())) {
+  if (is_gpu_place(ctx.GetPlace()) && is_gpu_place(tensor.place())) {
 #ifdef PADDLE_WITH_CUDA
-    PADDLE_ENFORCE(is_gpu_place(tensor.place()));
+    VLOG(3) << "GetCommunicationAllocationFromTensor GPU Begin";
     auto& gpu_dev_ctx =
         reinterpret_cast<const platform::CUDADeviceContext&>(ctx);
     auto copy_size = tensor.numel() * framework::SizeOfType(tensor.type());
+    VLOG(3) << "GetCommunicationAllocationFromTensor copy_size:" << copy_size;
     platform::CUDAPinnedPlace cuda_pinned;
     auto result = memory::AllocShared(cuda_pinned, copy_size);
 
     memory::Copy(cuda_pinned, result->ptr(),
-                 boost::get<platform::CUDAPlace>(tensor.place()),
+                 BOOST_GET_CONST(platform::CUDAPlace, tensor.place()),
                  tensor.data<void>(), copy_size, gpu_dev_ctx.stream());
     ctx.Wait();
+    VLOG(3) << "GetCommunicationAllocationFromTensor copy End";
     return TensorPayload(result);
 #else
     PADDLE_THROW("This situation should not be happened");
 #endif
   } else {
+    VLOG(3) << "GetCommunicationAllocationFromTensor CPU Begin";
     return TensorPayload(tensor);
   }
 }
 TensorPayload GetTensorPayload(framework::Variable* var,
                                const platform::DeviceContext& ctx,
                                VarMsg* request) {
+  VLOG(3) << "GetTensorPayload Begin";
   auto tensor = var->Get<framework::LoDTensor>();
   // FIXME(wuyi): data types in send_recv.proto is copied from
   // framework.proto
+  VLOG(3) << "GetTensorPayload set_data_type Begin";
   request->set_data_type(static_cast<VarMsg::Type>(tensor.type()));
   for (auto& dim : framework::vectorize(tensor.dims())) {
     request->add_dims(dim);
   }
+
   const framework::LoD lod = tensor.lod();
+  VLOG(3) << "GetTensorPayload set_lod_level Begin, lod.size(): " << lod.size();
   if (lod.size() > 0) {
     request->set_lod_level(lod.size());
     for (auto& each : lod) {

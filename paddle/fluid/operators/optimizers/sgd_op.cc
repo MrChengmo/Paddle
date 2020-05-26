@@ -40,15 +40,23 @@ class SGDOp : public framework::OperatorWithKernel {
     PADDLE_ENFORCE_EQ(framework::product(lr_dims), 1,
                       "Learning rate should have 1 element");
     auto param_dim = ctx->GetInputDim("Param");
-    // TODO(qijun): check dimensions of Param and Grad at compile
-    // and runtime.
+    if (ctx->GetInputsVarType("Grad")[0] ==
+        framework::proto::VarType::LOD_TENSOR) {
+      PADDLE_ENFORCE_EQ(
+          param_dim, ctx->GetInputDim("Grad"),
+          platform::errors::InvalidArgument(
+              "SGD Operator's input Param and Grad dimensions do not match. "
+              "The Param %s shape is [%s], but the Grad %s shape is [%s].",
+              ctx->Inputs("Param")[0], param_dim, ctx->Inputs("Grad")[0],
+              ctx->GetInputDim("Grad")));
+    }
     ctx->SetOutputDim("ParamOut", param_dim);
   }
 
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext &ctx) const override {
-    auto data_type = framework::GetDataTypeOfVar(ctx.InputVar("Param"));
+    auto data_type = OperatorWithKernel::IndicateVarDataType(ctx, "Param");
     return framework::OpKernelType(data_type, ctx.device_context());
   }
 
@@ -67,19 +75,15 @@ class SGDOp : public framework::OperatorWithKernel {
 class SGDOpInferVarType : public framework::VarTypeInference {
  public:
   void operator()(framework::InferVarTypeContext *ctx) const override {
-    auto &input_var_n = ctx->Input("Param")[0];
-    auto in_var_type = ctx->GetType(input_var_n);
-    PADDLE_ENFORCE(in_var_type == framework::proto::VarType::SELECTED_ROWS ||
-                       in_var_type == framework::proto::VarType::LOD_TENSOR,
-                   "The input Var's type should be LoDtensor or SelectedRows,"
-                   " but the received var(%s)'s type is %s",
-                   input_var_n, in_var_type);
+    auto in_var_type = ctx->GetInputType("Param");
+    PADDLE_ENFORCE_EQ(in_var_type == framework::proto::VarType::SELECTED_ROWS ||
+                          in_var_type == framework::proto::VarType::LOD_TENSOR,
+                      true, platform::errors::InvalidArgument(
+                                "The input Var's type should be LoDtensor or "
+                                "SelectedRows, but the received type is %s",
+                                in_var_type));
 
-    for (auto &out_var_n : ctx->Output("ParamOut")) {
-      if (ctx->GetType(out_var_n) != in_var_type) {
-        ctx->SetType(out_var_n, in_var_type);
-      }
-    }
+    ctx->SetOutputType("ParamOut", in_var_type, framework::ALL_ELEMENTS);
   }
 };
 
@@ -108,6 +112,11 @@ $$param\_out = param - learning\_rate * grad$$
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(sgd, ops::SGDOp, ops::SGDOpMaker,
-                  paddle::framework::EmptyGradOpMaker, ops::SGDOpInferVarType);
-REGISTER_OP_CPU_KERNEL(sgd, ops::SGDOpKernel<float>, ops::SGDOpKernel<double>);
+REGISTER_OPERATOR(
+    sgd, ops::SGDOp, ops::SGDOpMaker,
+    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
+    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>,
+    ops::SGDOpInferVarType);
+REGISTER_OP_CPU_KERNEL(
+    sgd, ops::SGDOpKernel<paddle::platform::CPUDeviceContext, float>,
+    ops::SGDOpKernel<paddle::platform::CPUDeviceContext, double>);

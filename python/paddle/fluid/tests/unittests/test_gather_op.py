@@ -17,6 +17,8 @@ from __future__ import print_function
 import unittest
 import numpy as np
 from op_test import OpTest
+import paddle
+import paddle.fluid as fluid
 
 
 class TestGatherOp(OpTest):
@@ -41,7 +43,7 @@ class TestGatherOp(OpTest):
         For multi-dimension input
         """
         self.x_shape = (10, 20)
-        self.x_type = "float32"
+        self.x_type = "float64"
         self.index = [1, 3, 5]
         self.index_type = "int32"
 
@@ -51,8 +53,8 @@ class TestCase1(TestGatherOp):
         """
         For one dimension input
         """
-        self.x_shape = (10)
-        self.x_type = "float32"
+        self.x_shape = (100)
+        self.x_type = "float64"
         self.index = [1, 3, 5]
         self.index_type = "int32"
 
@@ -62,8 +64,8 @@ class TestCase2(TestGatherOp):
         """
         For int64_t index type
         """
-        self.x_shape = (10)
-        self.x_type = "float32"
+        self.x_shape = (100)
+        self.x_type = "float64"
         self.index = [1, 3, 5]
         self.index_type = "int64"
 
@@ -74,7 +76,7 @@ class TestCase3(TestGatherOp):
         For other input type
         """
         self.x_shape = (10, 20)
-        self.x_type = "double"
+        self.x_type = "float64"
         self.index = [1, 3, 5]
         self.index_type = "int64"
 
@@ -92,7 +94,7 @@ class TestCase5(TestGatherOp):
     def config(self):
         self.x_shape = (10, 20)
         self.attrs = {'overwrite': False}
-        self.x_type = "float"
+        self.x_type = "float64"
         self.index = [1, 1, 3]
         self.index_type = "int32"
 
@@ -101,9 +103,39 @@ class TestCase6(TestGatherOp):
     def config(self):
         self.x_shape = (10, 20)
         self.attrs = {'overwrite': True}
-        self.x_type = "float"
+        self.x_type = "float64"
         self.index = [1, 3]
         self.index_type = "int32"
+
+
+class API_TestGather(unittest.TestCase):
+    def test_out(self):
+        with fluid.program_guard(fluid.Program(), fluid.Program()):
+            data1 = fluid.layers.data('data1', shape=[-1, 2], dtype='float64')
+            index = fluid.layers.data('index', shape=[-1, 1], dtype='float64')
+            out = paddle.gather(data1, index)
+            place = fluid.CPUPlace()
+            exe = fluid.Executor(place)
+            input = np.array([[1, 2], [3, 4], [5, 6]])
+            index_1 = np.array([1, 2])
+            result, = exe.run(feed={"data1": input,
+                                    "index": index_1},
+                              fetch_list=[out])
+            expected_output = np.array([[3, 4], [5, 6]])
+        self.assertTrue(np.allclose(result, expected_output))
+
+
+class API_TestDygraphGather(unittest.TestCase):
+    def test_out(self):
+        with fluid.dygraph.guard():
+            input_1 = np.array([[1, 2], [3, 4], [5, 6]])
+            index_1 = np.array([1, 2])
+            input = fluid.dygraph.to_variable(input_1)
+            index = fluid.dygraph.to_variable(index_1)
+            output = paddle.fluid.layers.gather(input, index)
+            output_np = output.numpy()
+            expected_output = np.array([[3, 4], [5, 6]])
+        self.assertTrue(np.allclose(output_np, expected_output))
 
 
 if __name__ == "__main__":

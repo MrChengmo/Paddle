@@ -50,12 +50,12 @@ inline EP_SPLIT_TABLE_PAIRS GetMultiFieldRpcContext(
     PADDLE_ENFORCE_GT(multi_parts, 0, "multi_parts must >=1");
 
     if (multi_parts == 1) {
-      for (int i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
+      for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
         table_pairs.push_back(
             std::make_pair(rpc_ctx.epmap[i], rpc_ctx.splited_var_names[i]));
       }
     } else {
-      for (int i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
+      for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
         for (int x = 0; x < multi_parts; x++) {
           auto table =
               string::Sprintf("%s@%d@PIECE", rpc_ctx.splited_var_names[i], x);
@@ -91,8 +91,9 @@ void ParameterSend<T>::operator()(const RpcContext &rpc_ctx,
 
   if (send_var->IsType<framework::LoDTensor>()) {
     size_t out_num = rpc_ctx.splited_var_names.size();
+    auto &send_tensor = send_var->Get<framework::LoDTensor>();
+
     if (out_num > 1) {
-      auto &send_tensor = send_var->Get<framework::LoDTensor>();
       auto &send_tensor_dims = send_tensor.dims();
       std::vector<framework::DDim> outs_dims;
       outs_dims.reserve(out_num);
@@ -109,36 +110,107 @@ void ParameterSend<T>::operator()(const RpcContext &rpc_ctx,
 
       // create output var in local scope
       size_t row_offset = 0;
-      for (auto i = 0; i < out_num; ++i) {
+      for (size_t i = 0; i < out_num; ++i) {
         framework::Tensor *out = local_scope->Var(rpc_ctx.splited_var_names[i])
                                      ->GetMutable<framework::LoDTensor>();
-        *out = send_tensor.Slice(row_offset, row_offset + outs_dims[i][0]);
+        if (platform::is_cpu_place(send_tensor.place())) {
+          VLOG(1) << "Parameter Send: Send tensor on CPU: "
+                  << platform::is_cpu_place(send_tensor.place());
+          *out = send_tensor.Slice(row_offset, row_offset + outs_dims[i][0]);
+        } else {
+          VLOG(1) << "Parameter Send: Send tensor on GPU: "
+                  << platform::is_gpu_place(send_tensor.place());
+
+          auto cpu_ctx = paddle::platform::CPUDeviceContext();
+          auto *gpu_ctx = reinterpret_cast<platform::CUDADeviceContext *>(
+              platform::DeviceContextPool::Instance().Get(send_tensor.place()));
+          auto &cpu_place =
+              BOOST_GET_CONST(platform::CPUPlace, cpu_ctx.GetPlace());
+          auto &gpu_place =
+              BOOST_GET_CONST(platform::CUDAPlace, gpu_ctx->GetPlace());
+          auto send_tensor_slice =
+              send_tensor.Slice(row_offset, row_offset + outs_dims[i][0]);
+          out->Resize(send_tensor_slice.dims());
+          paddle::memory::Copy(
+              cpu_place, out->data<T>(), gpu_place, send_tensor_slice.data<T>(),
+              sizeof(T) * send_tensor_slice.numel(), gpu_ctx->stream());
+        }
+
         row_offset += outs_dims[i][0];
       }
-    }
-
-    for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
-      auto &send_var_name = rpc_ctx.splited_var_names[i];
-      VLOG(4) << "send var name: " << send_var_name;
-      auto &endpoint = rpc_ctx.epmap[i];
-      VLOG(4) << "send var endpoint: " << endpoint;
-      VLOG(4) << "need send: " << NeedSend(*local_scope.get(), send_var_name);
-      if (NeedSend(*local_scope.get(), send_var_name)) {
-        VLOG(3) << "sending " << send_var_name << " to " << endpoint;
-        rets.push_back(rpc_client->AsyncSendVar(
-            endpoint, cpu_ctx, *local_scope.get(), send_var_name));
-        VLOG(4) << "send var " << send_var_name << " async handle done";
+    } else {
+      framework::Tensor *out = local_scope->Var(rpc_ctx.splited_var_names[0])
+                                   ->GetMutable<framework::LoDTensor>();
+      if (platform::is_cpu_place(send_tensor.place())) {
+        VLOG(1) << "Parameter Send: Send tensor on CPU: "
+                << platform::is_cpu_place(send_tensor.place());
+        out->ShareDataWith(send_tensor);
       } else {
-        VLOG(3) << "don't send non-initialized variable: "
-                << rpc_ctx.splited_var_names[i];
+        VLOG(1) << "Parameter Send: Send tensor on GPU: "
+                << platform::is_gpu_place(send_tensor.place());
+        auto cpu_ctx = paddle::platform::CPUDeviceContext();
+        auto *gpu_ctx = reinterpret_cast<platform::CUDADeviceContext *>(
+            platform::DeviceContextPool::Instance().Get(send_tensor.place()));
+        auto &cpu_place =
+            BOOST_GET_CONST(platform::CPUPlace, cpu_ctx.GetPlace());
+        auto &gpu_place =
+            BOOST_GET_CONST(platform::CUDAPlace, gpu_ctx->GetPlace());
+        out->Resize(send_tensor.dims());
+        paddle::memory::Copy(
+            cpu_place, out->data<T>(), gpu_place, send_tensor.data<T>(),
+            sizeof(T) * send_tensor.numel(), gpu_ctx->stream());
       }
     }
-
+    if (rpc_ctx.use_send_handler) {
+      for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
+        auto &send_var_name = rpc_ctx.splited_var_names[i];
+        VLOG(4) << "send var name: " << send_var_name;
+        auto &endpoint = rpc_ctx.epmap[i];
+        VLOG(4) << "send var endpoint: " << endpoint;
+        VLOG(4) << "need send: " << NeedSend(*local_scope.get(), send_var_name);
+        if (NeedSend(*local_scope.get(), send_var_name)) {
+          VLOG(3) << "sending " << send_var_name << " to " << endpoint;
+          rets.push_back(rpc_client->AsyncSendVar(
+              endpoint, cpu_ctx, *local_scope.get(), send_var_name));
+          VLOG(4) << "send var " << send_var_name << " async handle done";
+        } else {
+          VLOG(3) << "don't send non-initialized variable: "
+                  << rpc_ctx.splited_var_names[i];
+        }
+      }
+    } else {
+      for (size_t i = 0; i < rpc_ctx.splited_var_names.size(); i++) {
+        for (size_t j = 0; j < rpc_ctx.epmap.size(); j++) {
+          auto &send_var_name = rpc_ctx.splited_var_names[i];
+          VLOG(4) << "send var name: " << send_var_name;
+          auto &endpoint = rpc_ctx.epmap[j];
+          VLOG(4) << "send var endpoint: " << endpoint;
+          VLOG(4) << "need send: "
+                  << NeedSend(*local_scope.get(), send_var_name);
+          if (NeedSend(*local_scope.get(), send_var_name)) {
+            VLOG(3) << "sending " << send_var_name << " to " << endpoint;
+            rets.push_back(rpc_client->AsyncDistributeNotify(
+                endpoint, cpu_ctx, *local_scope.get(), send_var_name));
+            VLOG(4) << "send var " << send_var_name << " async handle done";
+          } else {
+            VLOG(3) << "don't send non-initialized variable: "
+                    << rpc_ctx.splited_var_names[i];
+          }
+        }
+      }
+    }
   } else if (send_var->IsType<framework::SelectedRows>()) {
     auto &send_slr = send_var->Get<framework::SelectedRows>();
     auto abs_sections = ToAbsoluteSection(rpc_ctx.height_sections);
 
     auto &send_rows = send_slr.rows();
+    if (send_rows.size() == 0) {
+      LOG(WARNING) << "WARNING: The variable sent to pserver is empty, which "
+                      "may cause an unknown error. Please check the state of "
+                      "use_double_buffer in pyreader async mode, you need to "
+                      "turn it false.";
+    }
+
     std::vector<std::vector<size_t>> outs_rows_idx;
     std::vector<std::vector<size_t>> outs_dense_idx;
 
@@ -169,7 +241,7 @@ void ParameterSend<T>::operator()(const RpcContext &rpc_ctx,
 
     auto place = platform::CPUPlace();
 
-    for (int ctx = 0; ctx < rpc_ctx.splited_var_names.size(); ctx++) {
+    for (size_t ctx = 0; ctx < rpc_ctx.splited_var_names.size(); ctx++) {
       for (int part = 0; part < multi_parts; part++) {
         auto out_idx = ctx * multi_parts + part;
         auto rows_idx = outs_rows_idx[out_idx];

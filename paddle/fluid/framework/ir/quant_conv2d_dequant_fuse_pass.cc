@@ -93,7 +93,8 @@ void RunQuantDequant(ir::Graph* graph, Scope* scope, int times,
       }
     }
 
-    int bit_length = boost::get<int>(quant_op->Op()->GetAttr("bit_length"));
+    int bit_length =
+        BOOST_GET_CONST(int, quant_op->Op()->GetAttr("bit_length"));
     int range = ((1 << (bit_length - 1)) - 1);
     // Prepare input scale
     std::string input_scale_var_name = quant_op->Op()->Input("InScale").front();
@@ -125,9 +126,9 @@ void RunQuantDequant(ir::Graph* graph, Scope* scope, int times,
         delete_nodes.insert(
             nodes[i * kNumFields + kDequantOpWeightScaleOffset]);
       } else {
-        float max_range = boost::get<float>(
-            nodes[i * kNumFields + kDequantOpOffset]->Op()->GetAttr(
-                "max_range"));
+        float max_range = BOOST_GET_CONST(
+            float, nodes[i * kNumFields + kDequantOpOffset]->Op()->GetAttr(
+                       "max_range"));
         weight_scale.push_back((range * range) / max_range);
       }
 
@@ -140,22 +141,24 @@ void RunQuantDequant(ir::Graph* graph, Scope* scope, int times,
 
       framework::OpDesc new_op_desc(base_op_desc, nullptr);
       new_op_desc.SetType(quantized_op_type);
+      new_op_desc.SetAttr("enable_int8", true);
 
       if (quantized_op_type == "conv2d" ||
           quantized_op_type == "conv2d_fusion" ||
           quantized_op_type == "depthwise_conv2d") {
         new_op_desc.SetInput("Input", {new_input});
+        new_op_desc.SetAttr("Input_scale", input_scale);
         new_op_desc.SetOutput("Output", {new_output});
       } else if (quantized_op_type == "fc") {
         new_op_desc.SetInput("Input", {new_input});
+        new_op_desc.SetAttr("Input_scale", input_scale);
         new_op_desc.SetOutput("Out", {new_output});
       } else if (quantized_op_type == "mul") {
         new_op_desc.SetInput("X", {new_input});
+        new_op_desc.SetAttr("X_scale", input_scale);
         new_op_desc.SetOutput("Out", {new_output});
       }
 
-      new_op_desc.SetAttr("enable_int8", true);
-      new_op_desc.SetAttr("input_scale", input_scale);
       new_op_desc.SetAttr("weight_scale", weight_scale);
       new_op_desc.Flush();
       auto* new_op = graph->CreateOpNode(&new_op_desc);

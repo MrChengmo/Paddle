@@ -16,6 +16,7 @@ limitations under the License. */
 
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include "paddle/fluid/framework/attribute.h"
 #include "paddle/fluid/framework/type_defs.h"
@@ -84,7 +85,7 @@ class OpDesc {
   T GetAttrIfExists(const std::string &name) const {
     T result{};
     if (HasAttr(name)) {
-      result = boost::get<T>(GetAttr(name));
+      result = BOOST_GET_CONST(T, GetAttr(name));
     }
     return result;
   }

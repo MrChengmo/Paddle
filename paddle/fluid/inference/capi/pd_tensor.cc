@@ -13,13 +13,16 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 #include <vector>
-#include "paddle/fluid/inference/capi/c_api.h"
 #include "paddle/fluid/inference/capi/c_api_internal.h"
+#include "paddle/fluid/inference/capi/paddle_c_api.h"
 
+using paddle::ConvertToACPrecision;
 using paddle::ConvertToPaddleDType;
 using paddle::ConvertToPDDataType;
-using paddle::ConvertToACPrecision;
 
 extern "C" {
 // PaddleTensor
@@ -29,44 +32,83 @@ void PD_DeletePaddleTensor(PD_Tensor* tensor) {
   if (tensor) {
     delete tensor;
     tensor = nullptr;
+    VLOG(3) << "PD_Tensor delete successfully. ";
   }
 }
 
 void PD_SetPaddleTensorName(PD_Tensor* tensor, char* name) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   tensor->tensor.name = std::string(name);
 }
 
 void PD_SetPaddleTensorDType(PD_Tensor* tensor, PD_DataType dtype) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   tensor->tensor.dtype = paddle::ConvertToPaddleDType(dtype);
 }
 
 void PD_SetPaddleTensorData(PD_Tensor* tensor, PD_PaddleBuf* buf) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   tensor->tensor.data = buf->buf;
 }
 
 void PD_SetPaddleTensorShape(PD_Tensor* tensor, int* shape, int size) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   tensor->tensor.shape.assign(shape, shape + size);
 }
 
 const char* PD_GetPaddleTensorName(const PD_Tensor* tensor) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   return tensor->tensor.name.c_str();
 }
 
 PD_DataType PD_GetPaddleTensorDType(const PD_Tensor* tensor) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   return ConvertToPDDataType(tensor->tensor.dtype);
 }
 
 PD_PaddleBuf* PD_GetPaddleTensorData(const PD_Tensor* tensor) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
   PD_PaddleBuf* ret = PD_NewPaddleBuf();
   ret->buf = tensor->tensor.data;
   return ret;
 }
 
-int* PD_GetPaddleTensorShape(const PD_Tensor* tensor, int** size) {
-  std::vector<int> shape = tensor->tensor.shape;
-  int s = shape.size();
-  *size = &s;
+const int* PD_GetPaddleTensorShape(const PD_Tensor* tensor, int* size) {
+  PADDLE_ENFORCE_NOT_NULL(tensor);
+  const std::vector<int>& shape = tensor->tensor.shape;
+  *size = shape.size();
   return shape.data();
+}
+
+PD_ZeroCopyTensor* PD_NewZeroCopyTensor() {
+  auto* tensor = new PD_ZeroCopyTensor;
+  PD_InitZeroCopyTensor(tensor);
+  return tensor;
+}
+void PD_DeleteZeroCopyTensor(PD_ZeroCopyTensor* tensor) {
+  if (tensor) {
+    PD_DestroyZeroCopyTensor(tensor);
+    delete tensor;
+  }
+  tensor = nullptr;
+}
+
+void PD_InitZeroCopyTensor(PD_ZeroCopyTensor* tensor) {
+  std::memset(tensor, 0, sizeof(PD_ZeroCopyTensor));
+}
+
+void PD_DestroyZeroCopyTensor(PD_ZeroCopyTensor* tensor) {
+#define __PADDLE_INFER_CAPI_DELETE_PTR(__ptr) \
+  if (__ptr) {                                \
+    std::free(__ptr);                         \
+    __ptr = nullptr;                          \
+  }
+
+  __PADDLE_INFER_CAPI_DELETE_PTR(tensor->data.data);
+  __PADDLE_INFER_CAPI_DELETE_PTR(tensor->shape.data);
+  __PADDLE_INFER_CAPI_DELETE_PTR(tensor->lod.data);
+
+#undef __PADDLE_INFER_CAPI_DELETE_PTR
 }
 
 }  // extern "C"

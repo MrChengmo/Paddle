@@ -32,9 +32,6 @@ limitations under the License. */
 #include "paddle/fluid/platform/init.h"
 #include "paddle/fluid/platform/place.h"
 #include "paddle/fluid/string/piece.h"
-#if defined(PADDLE_WITH_DGC)
-#include "dgc/dgc.h"
-#endif
 
 DECLARE_int32(paddle_num_threads);
 DEFINE_int32(multiple_of_cupti_buffer_size, 1,
@@ -49,27 +46,38 @@ namespace framework {
 #endif
 
 std::once_flag gflags_init_flag;
+std::once_flag glog_init_flag;
 std::once_flag p2p_init_flag;
+std::once_flag glog_warning_once_flag;
 
-#if defined(PADDLE_WITH_CUDA) && !defined(_WIN32)
-std::once_flag dgc_init_flag;
-#endif
-
-void InitGflags(std::vector<std::string> argv) {
+bool InitGflags(std::vector<std::string> args) {
+  bool successed = false;
   std::call_once(gflags_init_flag, [&]() {
     FLAGS_logtostderr = true;
-    argv.insert(argv.begin(), "dummy");
-    int argc = argv.size();
-    char **arr = new char *[argv.size()];
+    // NOTE(zhiqiu): dummy is needed, since the function
+    // ParseNewCommandLineFlags in gflags.cc starts processing
+    // commandline strings from idx 1.
+    // The reason is, it assumes that the first one (idx 0) is
+    // the filename of executable file.
+    args.insert(args.begin(), "dummy");
+    std::vector<char *> argv;
     std::string line;
-    for (size_t i = 0; i < argv.size(); i++) {
-      arr[i] = &argv[i][0];
-      line += argv[i];
+    int argc = args.size();
+    for (auto &arg : args) {
+      argv.push_back(const_cast<char *>(arg.data()));
+      line += arg;
       line += ' ';
     }
+    VLOG(1) << "Before Parse: argc is " << argc
+            << ", Init commandline: " << line;
+
+    char **arr = argv.data();
     google::ParseCommandLineFlags(&argc, &arr, true);
-    VLOG(1) << "Init commandline: " << line;
+    successed = true;
+
+    VLOG(1) << "After Parse: argc is " << argc;
   });
+  return successed;
 }
 
 void InitP2P(std::vector<int> devices) {
@@ -209,6 +217,16 @@ void InitDevices(bool init_p2p, const std::vector<int> devices) {
 void SignalHandle(const char *data, int size) {
   auto file_path = string::Sprintf("/tmp/paddle.%d.dump_info", ::getpid());
   try {
+    // The signal is coming line by line but we print general guide just once
+    std::call_once(glog_warning_once_flag, [&]() {
+      LOG(WARNING) << "Warning: PaddlePaddle catches a failure signal, it may "
+                      "not work properly\n";
+      LOG(WARNING) << "You could check whether you killed PaddlePaddle "
+                      "thread/process accidentally or report the case to "
+                      "PaddlePaddle\n";
+      LOG(WARNING) << "The detail failure signal is:\n\n";
+    });
+
     LOG(WARNING) << std::string(data, size);
     std::ofstream dump_info;
     dump_info.open(file_path, std::ios::app);
@@ -220,24 +238,16 @@ void SignalHandle(const char *data, int size) {
 #endif
 
 void InitGLOG(const std::string &prog_name) {
-  // glog will not hold the ARGV[0] inside.
-  // Use strdup to alloc a new string.
-  google::InitGoogleLogging(strdup(prog_name.c_str()));
+  std::call_once(glog_init_flag, [&]() {
+    // glog will not hold the ARGV[0] inside.
+    // Use strdup to alloc a new string.
+    google::InitGoogleLogging(strdup(prog_name.c_str()));
 #ifndef _WIN32
-  google::InstallFailureSignalHandler();
-  google::InstallFailureWriter(&SignalHandle);
+    google::InstallFailureSignalHandler();
+    google::InstallFailureWriter(&SignalHandle);
 #endif
-}
-
-#if defined(PADDLE_WITH_DGC)
-void InitDGC() {
-  std::call_once(dgc_init_flag, []() {
-    PADDLE_ENFORCE(paddle::communication::dgc::dynloadNcclLib());
   });
 }
-#else
-void InitDGC() {}
-#endif
 
 }  // namespace framework
 }  // namespace paddle

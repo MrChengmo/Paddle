@@ -20,7 +20,6 @@ limitations under the License. */
 #include <string>
 #include <vector>
 #include "paddle/fluid/framework/op_registry.h"
-#include "paddle/fluid/operators/detail/safe_ref.h"
 #include "paddle/fluid/operators/gather.h"
 #include "paddle/fluid/operators/math/math_function.h"
 
@@ -66,8 +65,10 @@ class DistributeFpnProposalsOpKernel : public framework::OpKernel<T> {
     const int num_level = max_level - min_level + 1;
 
     // check that the fpn_rois is not empty
-    PADDLE_ENFORCE_EQ(fpn_rois->lod().size(), 1UL,
-                      "DistributeFpnProposalsOp need 1 level of LoD");
+    PADDLE_ENFORCE_EQ(
+        fpn_rois->lod().size(), 1UL,
+        platform::errors::InvalidArgument("DistributeFpnProposalsOp needs LoD "
+                                          "with one level."));
 
     auto fpn_rois_lod = fpn_rois->lod().back();
     int fpn_rois_num = fpn_rois_lod[fpn_rois_lod.size() - 1];
@@ -76,7 +77,7 @@ class DistributeFpnProposalsOpKernel : public framework::OpKernel<T> {
     // record the number of rois in each level
     std::vector<int> num_rois_level(num_level, 0);
     std::vector<int> num_rois_level_integral(num_level + 1, 0);
-    for (int i = 0; i < fpn_rois_lod.size() - 1; ++i) {
+    for (size_t i = 0; i < fpn_rois_lod.size() - 1; ++i) {
       Tensor fpn_rois_slice =
           fpn_rois->Slice(fpn_rois_lod[i], fpn_rois_lod[i + 1]);
       const T* rois_data = fpn_rois_slice.data<T>();
@@ -111,7 +112,7 @@ class DistributeFpnProposalsOpKernel : public framework::OpKernel<T> {
     int* restore_index_data = restore_index->data<int>();
     std::vector<int> restore_index_inter(fpn_rois_num, -1);
     // distribute the rois into different fpn level by target level
-    for (int i = 0; i < fpn_rois_lod.size() - 1; ++i) {
+    for (size_t i = 0; i < fpn_rois_lod.size() - 1; ++i) {
       Tensor fpn_rois_slice =
           fpn_rois->Slice(fpn_rois_lod[i], fpn_rois_lod[i + 1]);
       const T* rois_data = fpn_rois_slice.data<T>();
