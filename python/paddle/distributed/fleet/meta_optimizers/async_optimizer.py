@@ -53,6 +53,7 @@ class AsyncMetaOptimizer(MetaOptimizerBase):
 
     def _build_trainer_programs(self, compiled_config):
         from paddle.fluid.incubate.fleet.parameter_server.ir import trainer_pass as worker
+        from paddle.fluid.incubate.fleet.parameter_server.ir import heter_trainer_pass as heter_worker
 
         _main = compiled_config.origin_main_program.clone()
         _startup = compiled_config.origin_startup_program.clone()
@@ -131,7 +132,7 @@ class AsyncMetaOptimizer(MetaOptimizerBase):
 
         main_program, startup_program = \
             self._build_trainer_programs(compiled_config) if self.role_maker.is_worker() \
-                else self._build_pserver_programs(compiled_config)
+            else self._build_pserver_programs(compiled_config)
 
         loss.block.program = main_program
         fluid.framework.switch_startup_program(startup_program)
